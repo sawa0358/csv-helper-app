@@ -8,11 +8,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <style>
         body { font-family: 'Inter', 'Noto Sans JP', sans-serif; }
-        .drop-zone { border: 2px dashed #cbd5e1; transition: all 0.2s ease-in-out; }
-        .drop-zone.drag-over { border-color: #3b82f6; background-color: #eff6ff; }
+        .drop-zone { border: 2px dashed #94a3b8; background-color: hsl(210, 6%, 88%); transition: all 0.2s ease-in-out; }
+        .drop-zone.drag-over { border-color: #3b82f6; background-color: #dadbdc; }
         .chat-bubble { max-width: 80%; }
-        .chat-bubble.user { background-color: #3b82f6; color: white; }
-        .chat-bubble.ai { background-color: #e5e7eb; color: #1f2937; }
+        .chat-bubble.user { background-color: #3b82f6; color: rgb(216, 215, 215); }
+        .chat-bubble.ai { background-color: #c0e9b5; color: #1f2937; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .spinner { animation: spin 1s linear infinite; }
     </style>
@@ -32,7 +32,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 
                 <!-- 1. ファイル選択 -->
-                <div class="p-6 rounded-lg shadow-md" style="background-color: #ADD2F5;">
+                <div class="p-6 rounded-lg shadow-md" style="background-color: #addbca;">
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center">
                         <i class="fa-solid fa-file-arrow-up mr-3 text-blue-500"></i>
                         ファイル選択
@@ -66,7 +66,7 @@
                 </div>
 
                 <!-- 2. 処理オプション -->
-                <div class="p-6 rounded-lg shadow-md" style="background-color: #ADD2F5;">
+                <div class="p-6 rounded-lg shadow-md" style="background-color: #edecc0;">
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center">
                         <i class="fa-solid fa-gear mr-3 text-slate-500"></i>
                         処理オプション
@@ -110,7 +110,7 @@
                         <i class="fa-solid fa-robot mr-3 text-purple-500"></i>
                         AIと対話して分析
                     </h2>
-                    <div id="ai-chat-box" class="h-64 overflow-y-auto bg-white rounded-md p-4 space-y-4">
+                    <div id="ai-chat-box" class="h-64 overflow-y-auto bg-slate-100 rounded-md p-4 space-y-4">
                         <div class="chat-bubble ai self-start">
                             <p>CSVファイルをアップロード後、ここでデータに関する質問ができます。</p>
                         </div>
@@ -131,7 +131,7 @@
             </button>
 
             <!-- 下段の結果表示エリア -->
-            <div id="result-area" class="p-6 rounded-lg shadow-md min-h-[300px]" style="background-color: #ADD2F5;">
+            <div id="result-area" class="p-6 rounded-lg shadow-md min-h-[300px]" style="background-color: #ffd9d9;">
                 <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center">
                     <i class="fa-solid fa-square-poll-vertical mr-3 text-green-500"></i>
                     処理結果

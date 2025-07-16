@@ -17,7 +17,7 @@
         .spinner { animation: spin 1s linear infinite; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800">
+<body class="bg-slate-200 text-slate-800">
 
     <div class="container mx-auto p-4 md:p-8 max-w-7xl">
         
@@ -33,7 +33,7 @@
             <div class="lg:col-span-1 space-y-6">
                 
                 <!-- ステップ1: ファイルアップロード -->
-                <div class="bg-white p-6 rounded-lg shadow-md">
+                <div class="p-6 rounded-lg shadow-md" style="background-color: #f2f6e5;">
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center">
                         <i class="fa-solid fa-file-arrow-up mr-3 text-blue-500"></i>
                         ファイル選択
@@ -68,8 +68,8 @@
                     </div>
                 </div>
 
-                <!-- ステップ2: 処理オプション (今は空) -->
-                <div class="bg-white p-6 rounded-lg shadow-md">
+                <!-- ステップ2: 処理オプション -->
+                <div class="p-6 rounded-lg shadow-md" style="background-color: #ADD2F5;">
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center">
                         <i class="fa-solid fa-gear mr-3 text-slate-500"></i>
                         処理オプション
@@ -78,18 +78,23 @@
                         <div>
                             <label for="filter_date_column" class="block text-sm font-medium text-slate-700">日付でフィルタリング</label>
                             <div class="grid grid-cols-2 gap-2 mt-1">
-                                <input type="text" id="filter_date_column" placeholder="日付列の名前 (例: 公示日)" value="公示日" class="block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                                <input type="date" id="filter_date_value" class="block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                <input type="text" id="filter_date_column" placeholder="日付列の名前 (例: 公示日)" value="公示日" class="bg-white block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                <input type="date" id="filter_date_value" class="bg-white block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                             </div>
                             <p class="text-xs text-slate-500 mt-1">指定した日付以降の案件のみを抽出します。</p>
                         </div>
-                        <!-- AI機能は後でここに追加します -->
+                        <div>
+                            <label for="ai_date_column" class="block text-sm font-medium text-slate-700">AIで日付形式を統一</label>
+                            <input type="text" id="ai_date_column" placeholder="日付列の名前 (例: 申請締切日)" value="工期／納期" class="bg-white mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+
+                            <p class="text-xs text-slate-500 mt-1">「R7.7.1」等を「YYYY-MM-DD」形式に変換します。</p>
+                        </div>
                     </div>
                     <hr class="my-4">
                         <div>
                             <label for="keyword_column" class="block text-sm font-medium text-slate-700">キーワードで絞り込み</label>
-                            <input type="text" id="keyword_column" placeholder="検索したい列の名前 (例: 案件名)" value="案件名" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                            <textarea id="keywords" placeholder="キーワードを改行で区切って入力&#10;例:&#10;PC&#10;導入" class="mt-2 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" rows="3"></textarea>
+                            <input type="text" id="keyword_column" placeholder="検索したい列の名前 (例: 案件名)" value="案件名" class="bg-white mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            <textarea id="keywords" placeholder="キーワードを改行で区切って入力&#10;例:&#10;PC&#10;導入" class="bg-white mt-2 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" rows="3"></textarea>
                             <div class="mt-2 flex items-center space-x-4">
                                 <div class="flex items-center">
                                     <input id="search_type_and" name="search_type" type="radio" value="AND" checked class="h-4 w-4 border-slate-300 text-blue-600 focus:ring-blue-500">
@@ -115,7 +120,7 @@
             <div class="lg:col-span-2 space-y-6">
                 
                 <!-- 結果表示エリア -->
-                <div id="result-area" class="bg-white p-6 rounded-lg shadow-md min-h-[300px]">
+                <div id="result-area" class="p-6 rounded-lg shadow-md min-h-[300px]" style="background-color: #bfe0d3;">
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center">
                         <i class="fa-solid fa-square-poll-vertical mr-3 text-green-500"></i>
                         処理結果
@@ -209,6 +214,9 @@
             formData.append('keyword_column', document.getElementById('keyword_column').value);
             formData.append('keywords', document.getElementById('keywords').value);
             formData.append('search_type', document.querySelector('input[name="search_type"]:checked').value);
+
+            // AI日付整形の入力値を追加
+            formData.append('ai_date_column', document.getElementById('ai_date_column').value);
 
             showLoading('CSVファイルを処理中...');
 

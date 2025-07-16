@@ -25,20 +25,18 @@
         <header class="mb-8">
             <h1 class="text-3xl font-bold text-slate-900">インポートCSV作成補助システム</h1>
             <p class="text-slate-600 mt-2">メインシステムに取り込むCSVファイルを、効率的に整形・分析します。</p>
-        </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            
-            <!-- 左側: 操作パネル -->
-            <div class="lg:col-span-1 space-y-6">
+        </header>
+        <div class="space-y-8">
+            <!-- 上段の操作パネル群 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 
-                <!-- ステップ1: ファイルアップロード -->
-                <div class="p-6 rounded-lg shadow-md" style="background-color: #f2f6e5;">
+                <!-- 1. ファイル選択 -->
+                <div class="p-6 rounded-lg shadow-md" style="background-color: #ADD2F5;">
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center">
                         <i class="fa-solid fa-file-arrow-up mr-3 text-blue-500"></i>
                         ファイル選択
                     </h2>
-
                     <!-- S3から前回ファイルを取得するボタン -->
                     <div class="mb-4">
                         <button id="load-previous-btn" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 transition-colors flex items-center justify-center">
@@ -47,7 +45,6 @@
                         </button>
                         <p class="text-xs text-slate-500 mt-1 text-center">前回処理後のファイルを自動でセットします。</p>
                     </div>
-                    
                     <div class="space-y-4">
                         <div>
                             <label for="latest_file" class="block text-sm font-medium text-slate-700 mb-1">最新の案件ファイル (必須)</label>
@@ -68,7 +65,7 @@
                     </div>
                 </div>
 
-                <!-- ステップ2: 処理オプション -->
+                <!-- 2. 処理オプション -->
                 <div class="p-6 rounded-lg shadow-md" style="background-color: #ADD2F5;">
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center">
                         <i class="fa-solid fa-gear mr-3 text-slate-500"></i>
@@ -86,11 +83,9 @@
                         <div>
                             <label for="ai_date_column" class="block text-sm font-medium text-slate-700">AIで日付形式を統一</label>
                             <input type="text" id="ai_date_column" placeholder="日付列の名前 (例: 申請締切日)" value="工期／納期" class="bg-white mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-
                             <p class="text-xs text-slate-500 mt-1">「R7.7.1」等を「YYYY-MM-DD」形式に変換します。</p>
                         </div>
-                    </div>
-                    <hr class="my-4">
+                        <hr class="my-4">
                         <div>
                             <label for="keyword_column" class="block text-sm font-medium text-slate-700">キーワードで絞り込み</label>
                             <input type="text" id="keyword_column" placeholder="検索したい列の名前 (例: 案件名)" value="案件名" class="bg-white mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
@@ -106,36 +101,52 @@
                                 </div>
                             </div>
                         </div>
-                </div>
-
-                <!-- 実行ボタン -->
-                <button id="process-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors text-lg flex items-center justify-center shadow-lg">
-                    <i class="fa-solid fa-rocket mr-2"></i>
-                    <span>処理実行</span>
-                </button>
-
-            </div>
-
-            <!-- 右側: 結果表示とAIチャット -->
-            <div class="lg:col-span-2 space-y-6">
-                
-                <!-- 結果表示エリア -->
-                <div id="result-area" class="p-6 rounded-lg shadow-md min-h-[300px]" style="background-color: #bfe0d3;">
-                    <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center">
-                        <i class="fa-solid fa-square-poll-vertical mr-3 text-green-500"></i>
-                        処理結果
-                    </h2>
-                    <div id="result-content" class="text-slate-500">
-                        <p>ここに処理のログや結果のプレビューが表示されます。</p>
                     </div>
-                    
-                    <!-- ダウンロードボタン (初期状態は非表示) -->
-                    <button id="download-btn" class="hidden mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 transition-colors flex items-center">
-                        <i class="fa-solid fa-download mr-2"></i>
-                        結果をCSVでダウンロード
-                    </button>
+                </div>
+
+                <!-- 3. AIと対話して分析 -->
+                <div class="p-6 rounded-lg shadow-md" style="background-color: #ADD2F5;">
+                    <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center">
+                        <i class="fa-solid fa-robot mr-3 text-purple-500"></i>
+                        AIと対話して分析
+                    </h2>
+                    <div id="ai-chat-box" class="h-64 overflow-y-auto bg-white rounded-md p-4 space-y-4">
+                        <div class="chat-bubble ai self-start">
+                            <p>CSVファイルをアップロード後、ここでデータに関する質問ができます。</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <input type="text" id="ai-chat-input" placeholder="例: 「〇〇」を含む案件を抽出して" class="bg-white flex-grow block w-full rounded-md border-slate-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm">
+                        <button id="ai-chat-send-btn" class="bg-purple-600 text-white font-bold py-2 px-4 rounded-md hover:bg-purple-700 transition-colors">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
+
+            <!-- 中段の実行ボタン -->
+            <button id="process-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors text-lg flex items-center justify-center shadow-lg">
+                <i class="fa-solid fa-rocket mr-2"></i>
+                <span>処理実行</span>
+            </button>
+
+            <!-- 下段の結果表示エリア -->
+            <div id="result-area" class="p-6 rounded-lg shadow-md min-h-[300px]" style="background-color: #ADD2F5;">
+                <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center">
+                    <i class="fa-solid fa-square-poll-vertical mr-3 text-green-500"></i>
+                    処理結果
+                </h2>
+                <div id="result-content" class="text-slate-500">
+                    <p>ここに処理のログや結果のプレビューが表示されます。</p>
+                </div>
+                
+                <!-- ダウンロードボタン (初期状態は非表示) -->
+                <button id="download-btn" class="hidden mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 transition-colors flex items-center">
+                    <i class="fa-solid fa-download mr-2"></i>
+                    結果をCSVでダウンロード
+                </button>
+            </div>
+        </div>
         </div>
     </div>
 
@@ -152,8 +163,12 @@
         const downloadBtn = document.getElementById('download-btn');
         const resultContent = document.getElementById('result-content');
         const loadPreviousBtn = document.getElementById('load-previous-btn');
+        const aiChatBox = document.getElementById('ai-chat-box');
+        const aiChatInput = document.getElementById('ai-chat-input');
+        const aiChatSendBtn = document.getElementById('ai-chat-send-btn');
 
         let processedCsvData = null; // 処理後のCSVデータを保持する変数
+        let latestFileObject = null; // AIチャット用に最新ファイルオブジェクトを保持
 
         // --- ドラッグ＆ドロップの動きを設定する関数（部品） ---
         function setupDropZone(dropZone, fileInput, fileNameEl) {
@@ -171,10 +186,16 @@
                 if (e.dataTransfer.files.length > 0) {
                     fileInput.files = e.dataTransfer.files;
                     updateFileName(fileInput, fileNameEl);
+                    if(fileInput.id === 'latest_file') {
+                       latestFileObject = fileInput.files[0];
+                    }
                 }
             });
             fileInput.addEventListener('change', () => {
                 updateFileName(fileInput, fileNameEl);
+                if(fileInput.id === 'latest_file') {
+                    latestFileObject = fileInput.files[0];
+                }
             });
         }
 
@@ -279,6 +300,144 @@
                 document.body.removeChild(link);
             }
         });
+
+        // --- AIチャットの処理 ---
+        async function handleAiChat() {
+            const question = aiChatInput.value.trim();
+            if (!question) return;
+            if (!latestFileObject) {
+                addChatMessage("先に「最新の案件ファイル」をアップロードしてください。", "ai");
+                return;
+            }
+
+            addChatMessage(question, "user");
+            aiChatInput.value = '';
+            addChatMessage("考え中...", "ai", true);
+
+            try {
+                const csvContent = await latestFileObject.text();
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question, csv_content: csvContent }),
+                });
+                const result = await response.json();
+                
+                aiChatBox.querySelector('.thinking')?.remove();
+
+                if (!response.ok) { throw new Error(result.error || 'AIチャットでエラーが発生しました。'); }
+                addChatMessage(result.reply, "ai");
+
+            } catch (error) {
+                aiChatBox.querySelector('.thinking')?.remove();
+                addChatMessage(`エラー: ${error.message}`, "ai");
+            }
+        }
+        
+        aiChatSendBtn.addEventListener('click', handleAiChat);
+        aiChatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAiChat();
+            }
+        });
+
+        function addChatMessage(message, sender, isThinking = false) {
+            const bubbleWrapper = document.createElement('div');
+            bubbleWrapper.classList.add('flex', 'w-full', 'mb-3');
+
+            const bubble = document.createElement('div');
+            bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
+            
+            if (sender === 'user') {
+                bubbleWrapper.classList.add('justify-end');
+                bubble.classList.add('user');
+            } else {
+                bubbleWrapper.classList.add('justify-start');
+                bubble.classList.add('ai');
+            }
+            
+            const p = document.createElement('p');
+            p.textContent = message;
+            bubble.appendChild(p);
+
+            if (isThinking) {
+                bubble.classList.add('thinking');
+            }
+            
+            bubbleWrapper.appendChild(bubble);
+            aiChatBox.appendChild(bubbleWrapper);
+            aiChatBox.scrollTop = aiChatBox.scrollHeight;
+        }
+
+        // --- AIチャットの処理 ---
+        async function handleAiChat() {
+            const question = aiChatInput.value.trim();
+            if (!question) return;
+            if (!latestFileObject) {
+                addChatMessage("先に「最新の案件ファイル」をアップロードしてください。", "ai");
+                return;
+            }
+
+            addChatMessage(question, "user");
+            aiChatInput.value = '';
+            addChatMessage("考え中...", "ai", true);
+
+            try {
+                const csvContent = await latestFileObject.text();
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question, csv_content: csvContent }),
+                });
+                const result = await response.json();
+                
+                aiChatBox.querySelector('.thinking')?.remove();
+
+                if (!response.ok) { throw new Error(result.error || 'AIチャットでエラーが発生しました。'); }
+                addChatMessage(result.reply, "ai");
+
+            } catch (error) {
+                aiChatBox.querySelector('.thinking')?.remove();
+                addChatMessage(`エラー: ${error.message}`, "ai");
+            }
+        }
+        
+        aiChatSendBtn.addEventListener('click', handleAiChat);
+        aiChatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAiChat();
+            }
+        });
+
+        function addChatMessage(message, sender, isThinking = false) {
+            const bubbleWrapper = document.createElement('div');
+            bubbleWrapper.classList.add('flex', 'w-full', 'mb-3');
+
+            const bubble = document.createElement('div');
+            bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
+            
+            if (sender === 'user') {
+                bubbleWrapper.classList.add('justify-end');
+                bubble.classList.add('user');
+            } else {
+                bubbleWrapper.classList.add('justify-start');
+                bubble.classList.add('ai');
+            }
+            
+            const p = document.createElement('p');
+            p.textContent = message;
+            bubble.appendChild(p);
+
+            if (isThinking) {
+                bubble.classList.add('thinking');
+            }
+            
+            bubbleWrapper.appendChild(bubble);
+            aiChatBox.appendChild(bubbleWrapper);
+            aiChatBox.scrollTop = aiChatBox.scrollHeight;
+        }
 
         // --- UIの表示を更新するための関数（部品）群 ---
         function showLoading(message) {

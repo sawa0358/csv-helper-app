@@ -1,8 +1,8 @@
 import os
 import io
 import pandas as pd
-import google.generativeai as genai # AI機能は後で追加します
-import boto3 # S3機能は後で追加します
+import google.generativeai as genai
+import boto3
 from flask import Flask, request, jsonify, render_template_string, send_file
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
@@ -68,7 +68,7 @@ def read_csv_from_stream(file_stream):
 def format_date_with_ai(date_string):
     """AIを使用して様々な形式の日付文字列を 'YYYY-MM-DD' に変換する"""
     if not model or not date_string or pd.isna(date_string):
-        return date_string # AIが使えない、またはデータが空の場合は何もしない
+        return date_string
 
     prompt = f"""
 # あなたのタスク
@@ -94,19 +94,16 @@ def format_date_with_ai(date_string):
         response = model.generate_content(prompt)
         cleaned_text = response.text.strip().replace("`", "")
         
-        # AIが空文字列を返してきたら、それをそのまま返す（=空欄にする）
         if cleaned_text == "":
             return ""
-        # YYYY-MM-DD形式ならそれを返す
         if len(cleaned_text) == 10 and cleaned_text[4] == '-' and cleaned_text[7] == '-':
             return cleaned_text
         
-        # 上記以外（AIがうまく変換できなかった場合など）は、念のため元の文字列を返す
         return date_string
     except Exception as e:
         print(f"AIによる日付変換エラー: {e}")
-        return date_string # エラー時も元の日付を返す
-    
+        return date_string
+
 # =================================================================
 # Flask ルート (APIエンドポイント)
 # =================================================================
@@ -114,18 +111,17 @@ def format_date_with_ai(date_string):
 @app.route('/')
 def index():
     """メインのHTMLページをレンダリングする"""
-    # index.htmlを直接読み込んでテンプレートとして使用
     try:
         with open('index.html', 'r', encoding='utf-8') as f:
             html_content = f.read()
         return render_template_string(html_content)
     except FileNotFoundError:
         return "index.htmlが見つかりません。先にファイルを作成してください。", 404
+
 @app.route('/api/process', methods=['POST'])
 def process_csv():
     """CSVの整形・分析処理を行うメインAPI"""
     try:
-        # --- ファイルの読み込み ---
         latest_file = request.files.get('latest_file')
         previous_file = request.files.get('previous_file')
         
@@ -137,7 +133,6 @@ def process_csv():
         original_row_count = len(df_latest)
         processing_log = [f"最新ファイル「{secure_filename(latest_file.filename)}」を読み込みました。({original_row_count}行)"]
 
-        # --- ファイルの比較・差分抽出 ---
         if previous_file:
             df_previous = read_csv_from_stream(previous_file.stream)
             processing_log.append(f"前回ファイル「{secure_filename(previous_file.filename)}」を読み込みました。({len(df_previous)}行)")
@@ -151,7 +146,6 @@ def process_csv():
             except Exception as e:
                  processing_log.append(f"警告: ファイル比較中にエラーが発生しました。差分抽出はスキップされます。詳細: {e}")
 
-        # --- 日付によるフィルタリング ---
         filter_date_column = request.form.get('filter_date_column')
         filter_date_value = request.form.get('filter_date_value')
         if filter_date_column and filter_date_value:
@@ -164,7 +158,6 @@ def process_csv():
             rows_after_filter = len(df_latest)
             processing_log.append(f"日付フィルタリング: 「{filter_date_column}」が {filter_date_value} 以降のデータに絞り込みました。({rows_before_filter}行 -> {rows_after_filter}行)")
 
-        # --- キーワードによる絞り込み ---
         keyword_column = request.form.get('keyword_column')
         keywords_str = request.form.get('keywords')
         search_type = request.form.get('search_type')
@@ -190,7 +183,6 @@ def process_csv():
                 rows_after_filter = len(df_latest)
                 processing_log.append(f"キーワード検索: 「{keyword_column}」で {search_type} 検索を実行しました。({rows_before_filter}行 -> {rows_after_filter}行)")
 
-        # --- AIによる日付形式の統一 ---
         ai_date_column = request.form.get('ai_date_column')
         if ai_date_column:
             if not model:
@@ -199,12 +191,9 @@ def process_csv():
                 return jsonify({'error': f'AI日付整形対象の列「{ai_date_column}」がファイルに存在しません。'}), 400
             
             processing_log.append(f"AIによる日付形式統一を開始します... (対象列: {ai_date_column})")
-            # applyメソッドとAI関数を使って列全体を変換します
             df_latest[ai_date_column] = df_latest[ai_date_column].apply(format_date_with_ai)
             processing_log.append("AIによる日付形式統一が完了しました。")
 
-
-        # --- S3へのファイル保存 ---
         if s3_client:
             try:
                 csv_buffer = io.StringIO()
@@ -219,7 +208,6 @@ def process_csv():
             except Exception as e:
                 processing_log.append(f"警告: S3へのファイル保存に失敗しました。詳細: {e}")
 
-        # --- 処理結果を画面に返す ---
         return jsonify({
             'message': '処理が正常に完了しました。',
             'log': processing_log,
@@ -230,34 +218,67 @@ def process_csv():
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': f'サーバーで予期せぬエラーが発生しました: {str(e)}'}), 500
-    
-    @app.route('/api/load_previous', methods=['GET'])
-    def load_previous_file_from_s3():
-        """S3から前回保存したファイルを取得する"""
-        if not s3_client:
-            return jsonify({'error': 'S3が設定されていないため、前回ファイルを取得できません。'}), 503
-        
-        try:
-            response = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=S3_PREVIOUS_FILE_KEY)
-            file_content = response['Body'].read()
-            
-            # ファイルをクライアントに送信
-            return send_file(
-                io.BytesIO(file_content),
-                mimetype='text/csv',
-                as_attachment=True,
-                download_name=S3_PREVIOUS_FILE_KEY
-            )
-        except s3_client.exceptions.NoSuchKey:
-            return jsonify({'error': f'S3バケットに「{S3_PREVIOUS_FILE_KEY}」が見つかりません。'}), 404
-        except Exception as e:
-            traceback.print_exc()
-            return jsonify({'error': f'S3からのファイル取得中にエラーが発生しました: {str(e)}'}), 500
 
+@app.route('/api/load_previous', methods=['GET'])
+def load_previous_file_from_s3():
+    """S3から前回保存したファイルを取得する"""
+    if not s3_client:
+        return jsonify({'error': 'S3が設定されていないため、前回ファイルを取得できません。'}), 503
+    
+    try:
+        response = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=S3_PREVIOUS_FILE_KEY)
+        file_content = response['Body'].read()
+        
+        return send_file(
+            io.BytesIO(file_content),
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=S3_PREVIOUS_FILE_KEY
+        )
+    except s3_client.exceptions.NoSuchKey:
+        return jsonify({'error': f'S3バケットに「{S3_PREVIOUS_FILE_KEY}」が見つかりません。'}), 404
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': f'S3からのファイル取得中にエラーが発生しました: {str(e)}'}), 500
+
+@app.route('/api/chat', methods=['POST'])
+def chat_with_ai():
+    """アップロードされたCSVの内容についてAIと対話する"""
+    if not model:
+        return jsonify({'error': 'AI機能が設定されていないため、チャットは実行できません。'}), 503
+
+    data = request.get_json()
+    user_question = data.get('question')
+    csv_content = data.get('csv_content')
+
+    if not user_question or not csv_content:
+        return jsonify({'error': '質問とCSVデータの両方が必要です。'}), 400
+
+    prompt_lines = [
+        "あなたは優秀なデータアナリストです。",
+        "以下のCSVデータの内容を分析し、ユーザーからの質問に簡潔かつ的確に答えてください。",
+        "",
+        "# CSVデータ:",
+        "```csv",
+        csv_content,
+        "```",
+        "",
+        "# ユーザーからの質問:",
+        user_question,
+        "",
+        "# 回答:"
+    ]
+    prompt = "\n".join(prompt_lines)
+
+    try:
+        response = model.generate_content(prompt)
+        return jsonify({'reply': response.text})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': f'AIとの対話中にエラーが発生しました: {str(e)}'}), 500
 
 # =================================================================
 # アプリケーション実行
 # =================================================================
 if __name__ == '__main__':
-    # Procfileでgunicornを使うため、デバッグモードは開発時のみ有効
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))

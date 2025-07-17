@@ -22,23 +22,16 @@
 
     <div class="container mx-auto p-4 md:p-8 max-w-7xl">
         
-        <!-- ヘッダー -->
         <header class="mb-8">
             <h1 class="text-3xl font-bold text-slate-900">インポートCSV作成補助システム</h1>
             <p class="text-slate-600 mt-2">メインシステムに取り込むCSVファイルを、効率的に整形・分析します。</p>
         </header>
 
         <div class="space-y-8">
-            <!-- 上段の操作パネル群 -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 
-                <!-- 1. ファイル選択 -->
                 <div class="p-6 rounded-lg shadow-md" style="background-color: #addbca;">
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center"><i class="fa-solid fa-file-arrow-up mr-3 text-blue-500"></i>ファイル選択</h2>
-                    <div class="mb-4">
-                        <button id="load-previous-btn" class="w-full bg-gray-400 text-white font-bold py-2 px-4 rounded-md flex items-center justify-center cursor-not-allowed" disabled><i class="fa-solid fa-cloud-arrow-down mr-2"></i><span>S3から前回ファイルを取得 (無効)</span></button>
-                        <p class="text-xs text-slate-500 mt-1 text-center">この機能は現在利用できません。</p>
-                    </div>
                     <div class="space-y-4">
                         <div>
                             <label for="latest_file" class="block text-sm font-medium text-slate-700 mb-1">最新の案件ファイル (必須)</label>
@@ -49,291 +42,316 @@
                             <input type="file" id="latest_file" class="hidden" accept=".csv">
                         </div>
                         <div>
-                            <label for="previous_file" class="block text-sm font-medium text-slate-700 mb-1">前回の案件ファイル (差分抽出用)</label>
+                            <div class="flex justify-between items-center mb-1">
+                                <label for="previous_file" class="block text-sm font-medium text-slate-700">前回の案件ファイル (差分抽出用)</label>
+                                <div class="flex items-center space-x-3">
+                                    <button id="clear-previous-btn" class="hidden text-sm text-gray-500 hover:text-red-600" title="前回ファイルをクリア">
+                                        <i class="fa-solid fa-times-circle fa-lg"></i>
+                                    </button>
+                                    <button id="download-previous-btn" class="hidden text-sm text-blue-600 hover:text-blue-800" title="前回ファイルをダウンロード">
+                                        <i class="fa-solid fa-circle-down fa-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
                              <div id="previous-drop-zone" class="drop-zone rounded-md p-4 text-center cursor-pointer">
                                 <i class="fa-solid fa-file-csv text-3xl text-slate-400"></i>
-                                <p id="previous-file-name" class="mt-2 text-sm text-slate-500">ここにドラッグ＆ドロップ<br>またはクリックして選択</p>
+                                <p id="previous-file-name" class="mt-2 text-sm text-slate-500">S3から自動読込中...</p>
                             </div>
                             <input type="file" id="previous_file" class="hidden" accept=".csv">
                         </div>
                     </div>
                 </div>
 
-                <!-- 2. 下準備オプション -->
                 <div class="p-6 rounded-lg shadow-md" style="background-color: #edecc0;">
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center"><i class="fa-solid fa-gear mr-3 text-slate-500"></i>下準備オプション</h2>
                     <div class="space-y-4">
+                        <!-- ★★★ 1つ目の日付フィルター ★★★ -->
                         <div>
-                            <label for="filter_date_column" class="block text-sm font-medium text-slate-700">日付でフィルタリング</label>
+                            <label for="filter_date_column_1" class="block text-sm font-medium text-slate-700">日付でフィルタリング ①</label>
                             <div class="grid grid-cols-2 gap-2 mt-1">
-                                <input type="text" id="filter_date_column" placeholder="日付列の名前 (例: 公示日)" value="公示日" class="bg-white block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2">
-                                <input type="date" id="filter_date_value" class="bg-white block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2">
+                                <input type="text" id="filter_date_column_1" placeholder="日付列の名前" value="公示日" class="bg-white block w-full rounded-md p-2">
+                                <input type="date" id="filter_date_value_1" class="bg-white block w-full rounded-md p-2">
+                            </div>
+                        </div>
+                        <!-- ★★★ 2つ目の日付フィルター ★★★ -->
+                        <div>
+                            <label for="filter_date_column_2" class="block text-sm font-medium text-slate-700">日付でフィルタリング ②</label>
+                            <div class="grid grid-cols-2 gap-2 mt-1">
+                                <input type="text" id="filter_date_column_2" placeholder="日付列の名前" value="申請締切日" class="bg-white block w-full rounded-md p-2">
+                                <input type="date" id="filter_date_value_2" class="bg-white block w-full rounded-md p-2">
                             </div>
                         </div>
                         <hr class="my-4">
                         <div>
                             <div class="flex items-center justify-between">
                                 <label for="ai_date_format_enabled" class="block text-sm font-medium text-slate-700">AIで日付を自動整形</label>
-                                <input type="checkbox" id="ai_date_format_enabled" checked class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <input type="checkbox" id="ai_date_format_enabled" checked class="h-5 w-5 rounded">
                             </div>
-                            <input type="text" id="ai_date_format_column" placeholder="整形したい列の名前" value="工期／納期" class="bg-white mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2">
-                            <p class="text-xs text-slate-500 mt-1">和暦や複雑な日付表現をYYYY-MM-DD形式に統一します。</p>
+                            <input type="text" id="ai_date_format_column" placeholder="整形したい列の名前" value="工期／納期" class="bg-white mt-1 block w-full rounded-md p-2">
                         </div>
                         <hr class="my-4">
                         <div>
                             <label for="keyword_column" class="block text-sm font-medium text-slate-700">キーワードで絞り込み</label>
-                            <input type="text" id="keyword_column" placeholder="検索したい列の名前 (例: 案件名)" value="案件名" class="bg-white mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2">
-                            <textarea id="keywords" placeholder="キーワードを改行で区切って入力&#10;例:&#10;PC&#10;導入" class="bg-white mt-2 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" rows="3"></textarea>
+                            <input type="text" id="keyword_column" placeholder="検索したい列の名前" value="案件名" class="bg-white mt-1 block w-full rounded-md p-2">
+                            <textarea id="keywords" placeholder="キーワードを改行で区切って入力" class="bg-white mt-2 block w-full rounded-md" rows="3"></textarea>
                             <div class="mt-2 flex items-center space-x-4">
                                 <div class="flex items-center">
-                                    <input id="search_type_and" name="search_type" type="radio" value="AND" checked class="h-4 w-4 border-slate-300 text-blue-600 focus:ring-blue-500"><label for="search_type_and" class="ml-2 block text-sm text-slate-900">AND検索</label>
+                                    <input id="search_type_and" name="search_type" type="radio" value="AND" checked class="h-4 w-4"><label for="search_type_and" class="ml-2 block text-sm">AND検索</label>
                                 </div>
                                 <div class="flex items-center">
-                                    <input id="search_type_or" name="search_type" type="radio" value="OR" class="h-4 w-4 border-slate-300 text-blue-600 focus:ring-blue-500"><label for="search_type_or" class="ml-2 block text-sm text-slate-900">OR検索</label>
+                                    <input id="search_type_or" name="search_type" type="radio" value="OR" class="h-4 w-4"><label for="search_type_or" class="ml-2 block text-sm">OR検索</label>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- 3. AIと対話して分析 -->
                 <div class="p-6 rounded-lg shadow-md" style="background-color: #ADD2F5;">
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center"><i class="fa-solid fa-robot mr-3 text-purple-500"></i>AIと対話して分析</h2>
                     <div id="ai-chat-box" class="h-64 overflow-y-auto bg-slate-100 rounded-md p-4 space-y-4">
                         <div class="chat-bubble ai self-start"><p>「最新の案件ファイル」をアップロード後、ここでデータに関する質問ができます。</p></div>
                     </div>
                     <div class="mt-4 flex gap-2">
-                        <input type="text" id="ai-chat-input" placeholder="例: 〇〇の件数を教えて" class="bg-white flex-grow block w-full rounded-md border-slate-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm p-2">
-                        <button id="ai-chat-send-btn" class="bg-purple-600 text-white font-bold py-2 px-4 rounded-md hover:bg-purple-700 transition-colors"><i class="fa-solid fa-paper-plane"></i></button>
+                        <input type="text" id="ai-chat-input" placeholder="例: 〇〇の件数を教えて" class="bg-white flex-grow block w-full rounded-md p-2">
+                        <button id="ai-chat-send-btn" class="bg-purple-600 text-white font-bold py-2 px-4 rounded-md"><i class="fa-solid fa-paper-plane"></i></button>
                     </div>
                 </div>
             </div>
-
            
-            <!-- ★★★ 新しいAIへの指示入力セクション ★★★ -->
             <div class="p-6 rounded-lg shadow-md" style="background-color: #fefce8;">
                 <h2 class="text-xl font-semibold mb-2 border-b pb-2 flex items-center"><i class="fa-solid fa-wand-magic-sparkles mr-3 text-yellow-500"></i>AIへの指示（プロンプト）</h2>
                 <p class="text-sm text-slate-600 mb-4">（任意）下準備が終わったデータに対し、さらにAIで処理を追加できます。</p>
-                
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                    <!-- 左側：テンプレート操作 -->
                     <div class="space-y-2">
                         <label for="template-select" class="block text-sm font-medium text-slate-700">テンプレートから読込</label>
-                        <select id="template-select" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2">
-                            <!-- テンプレートがここに読み込まれます -->
-                        </select>
-                        <button id="delete-template-btn" class="text-xs bg-slate-200 text-red-700 font-medium py-1 px-3 rounded-md hover:bg-red-100 transition-colors flex items-center w-fit">
-                            <i class="fa-solid fa-trash-can mr-1"></i>
-                            <span>選択中のテンプレートを削除</span>
-                        </button>
+                        <select id="template-select" class="block w-full rounded-md p-2"></select>
+                        <button id="delete-template-btn" class="text-xs bg-slate-200 text-red-700 font-medium py-1 px-3 rounded-md hover:bg-red-100 flex items-center w-fit"><i class="fa-solid fa-trash-can mr-1"></i><span>選択中のテンプレートを削除</span></button>
                     </div>
-                    <!-- 右側：指示入力エリア -->
                     <div class="space-y-2">
-                        <label for="ai-prompt-editor" class="block text-sm font-medium text-slate-700">指示内容</label>
-                        <textarea id="ai-prompt-editor" class="w-full h-32 p-2 border rounded-md bg-white shadow-sm" placeholder="例: 「金額」列が50000以上の行だけを抽出して。"></textarea>
+                        <label for="ai-prompt-editor" class="block text-sm font-medium">指示内容</label>
+                        <textarea id="ai-prompt-editor" class="w-full h-32 p-2 border rounded-md" placeholder="例: 「金額」列が50000以上の行だけを抽出して。"></textarea>
                         <div class="flex space-x-2">
-                            <button id="save-template-btn" class="w-full text-sm bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md flex items-center justify-center"><i class="fa-solid fa-floppy-disk mr-2"></i>現在の内容をテンプレートに保存</button>
-                            <button id="clear-prompt-btn" class="w-full text-sm bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md flex items-center justify-center"><i class="fa-solid fa-eraser mr-2"></i>クリア</button>
+                            <button id="save-template-btn" class="w-full text-sm bg-blue-500 text-white font-bold py-2 px-4 rounded-md flex items-center justify-center"><i class="fa-solid fa-floppy-disk mr-2"></i>現在の内容をテンプレートに保存</button>
+                            <button id="clear-prompt-btn" class="w-full text-sm bg-gray-500 text-white font-bold py-2 px-4 rounded-md flex items-center justify-center"><i class="fa-solid fa-eraser mr-2"></i>クリア</button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- 実行ボタン -->
-            <button id="process-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors text-lg flex items-center justify-center shadow-lg"><i class="fa-solid fa-rocket mr-2"></i><span>処理実行</span></button>
+            <button id="process-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-lg flex items-center justify-center shadow-lg"><i class="fa-solid fa-rocket mr-2"></i><span>処理実行</span></button>
 
-            <!-- 結果表示エリア -->
             <div id="result-area" class="p-6 rounded-lg shadow-md min-h-[300px]" style="background-color: #ffd9d9;">
                 <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center"><i class="fa-solid fa-square-poll-vertical mr-3 text-green-500"></i>処理結果</h2>
                 <div id="result-content" class="text-slate-500"><p>ここに処理のログや結果のプレビューが表示されます。</p></div>
-                <button id="download-btn" class="hidden mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 transition-colors flex items-center"><i class="fa-solid fa-download mr-2"></i>結果をCSVでダウンロード</button>
+                <div id="s3-status" class="mt-4"></div>
+                <button id="download-btn" class="hidden mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-md"><i class="fa-solid fa-download mr-2"></i>結果をCSVでダウンロード</button>
             </div>
         </div>
     </div>
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-        
-        // --- 画面の部品を取得します ---
         const latestFileInput = document.getElementById('latest_file');
         const previousFileInput = document.getElementById('previous_file');
         const latestDropZone = document.getElementById('latest-drop-zone');
         const previousDropZone = document.getElementById('previous-drop-zone');
         const latestFileNameEl = document.getElementById('latest-file-name');
         const previousFileNameEl = document.getElementById('previous-file-name');
-        
+        const downloadPreviousBtn = document.getElementById('download-previous-btn');
+        const clearPreviousBtn = document.getElementById('clear-previous-btn');
         const aiPromptEditor = document.getElementById('ai-prompt-editor');
         const templateSelect = document.getElementById('template-select');
         const saveTemplateBtn = document.getElementById('save-template-btn');
         const deleteTemplateBtn = document.getElementById('delete-template-btn');
         const clearPromptBtn = document.getElementById('clear-prompt-btn');
-
         const processBtn = document.getElementById('process-btn');
         const downloadBtn = document.getElementById('download-btn');
         const resultContent = document.getElementById('result-content');
-        
+        const s3StatusEl = document.getElementById('s3-status');
         const aiChatBox = document.getElementById('ai-chat-box');
         const aiChatInput = document.getElementById('ai-chat-input');
         const aiChatSendBtn = document.getElementById('ai-chat-send-btn');
-
-        // --- 状態を保存する変数を準備します ---
         let templates = [];
         let processedCsvData = null;
         let latestFileObject = null;
 
-        // --- テンプレート機能の部品（関数）群 ---
-
-        // (1) ブラウザからテンプレートを読み込み、プルダウンを作る
         function loadTemplates() {
-            const storedTemplates = localStorage.getItem('csv_prompt_templates_v2'); // 新しい保存キー
-            if (storedTemplates) {
-                templates = JSON.parse(storedTemplates);
-            }
-            
-            templateSelect.innerHTML = ''; // プルダウンを空にする
-            
-            const defaultOption = document.createElement('option');
-            defaultOption.value = "";
-            defaultOption.textContent = "テンプレートを選択...";
-            templateSelect.appendChild(defaultOption);
-
+            templates = JSON.parse(localStorage.getItem('csv_prompt_templates_v2') || '[]');
+            templateSelect.innerHTML = '<option value="">テンプレートを選択...</option>';
             templates.forEach((template, index) => {
                 const option = document.createElement('option');
-                option.value = index; // optionの値には配列の番号を保存
+                option.value = index;
                 option.textContent = template.name;
                 templateSelect.appendChild(option);
             });
         }
 
-        // (2) テンプレートをブラウザに保存する
         function saveTemplatesToStorage() {
             localStorage.setItem('csv_prompt_templates_v2', JSON.stringify(templates));
         }
 
-        // --- テンプレート操作ボタンの動き ---
-
-        // プルダウンが選択された時
         templateSelect.addEventListener('change', () => {
             const selectedIndex = templateSelect.value;
-            if (selectedIndex !== "") {
-                aiPromptEditor.value = templates[selectedIndex].content;
-            } else {
-                aiPromptEditor.value = "";
-            }
+            aiPromptEditor.value = (selectedIndex !== "") ? templates[selectedIndex].content : "";
         });
         
-        // 「現在の内容をテンプレートに保存」ボタンが押された時
         saveTemplateBtn.addEventListener('click', () => {
             const content = aiPromptEditor.value.trim();
-            if (!content) {
-                alert('テンプレートとして保存する内容を指示内容エリアに入力してください。');
-                return;
-            }
+            if (!content) return alert('テンプレートとして保存する内容を指示内容エリアに入力してください。');
             const name = prompt('テンプレート名を入力してください:', `新規テンプレート ${templates.length + 1}`);
-            if (!name) return; // キャンセルされた場合
-
-            templates.push({ name: name, content: content });
+            if (!name) return;
+            templates.push({ name, content });
             saveTemplatesToStorage();
-            loadTemplates(); // プルダウンを再読み込み
-            // 保存したばかりのテンプレートを選択状態にする
+            loadTemplates();
             templateSelect.value = templates.length - 1;
         });
 
-        // 「選択中のテンプレートを削除」ボタンが押された時
         deleteTemplateBtn.addEventListener('click', () => {
             const selectedIndex = templateSelect.value;
-            if (selectedIndex === "") {
-                alert('削除するテンプレートをプルダウンから選択してください。');
-                return;
-            }
-            
+            if (selectedIndex === "") return alert('削除するテンプレートをプルダウンから選択してください。');
             if (confirm(`「${templates[selectedIndex].name}」を削除しますか？`)) {
-                templates.splice(selectedIndex, 1); // 配列から削除
+                templates.splice(selectedIndex, 1);
                 saveTemplatesToStorage();
-                loadTemplates(); // プルダウンを再読み込み
-                aiPromptEditor.value = ""; // 指示内容をクリア
+                loadTemplates();
+                aiPromptEditor.value = "";
             }
         });
 
-        // 「クリア」ボタンが押された時
         clearPromptBtn.addEventListener('click', () => {
             aiPromptEditor.value = "";
-            templateSelect.value = ""; // プルダウンの選択も解除
+            templateSelect.value = "";
         });
 
-
-        // --- ファイルのドラッグ＆ドロップ機能 ---
-        function setupDropZone(dropZone, fileInput, fileNameEl) {
+        function setupDropZone(dropZone, fileInput, fileNameEl, downloadBtnEl, clearBtnEl) {
             dropZone.addEventListener('click', () => fileInput.click());
             dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
             dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
+            const handleFile = (file) => {
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                fileInput.files = dt.files;
+                if (fileInput.id === 'latest_file') latestFileObject = file;
+                updateFileName(fileInput, fileNameEl, downloadBtnEl, clearBtnEl);
+            };
             dropZone.addEventListener('drop', (e) => {
                 e.preventDefault();
                 dropZone.classList.remove('drag-over');
-                if (e.dataTransfer.files.length > 0) {
-                    fileInput.files = e.dataTransfer.files;
-                    updateFileName(fileInput, fileNameEl);
-                    if (fileInput.id === 'latest_file') {
-                        latestFileObject = fileInput.files[0];
-                    }
-                }
+                if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
             });
-            fileInput.addEventListener('change', () => {
-                updateFileName(fileInput, fileNameEl);
-                if (fileInput.id === 'latest_file') {
-                    latestFileObject = fileInput.files[0];
-                }
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) handleFile(e.target.files[0]);
             });
         }
 
-        function updateFileName(fileInput, fileNameEl) {
+        function updateFileName(fileInput, fileNameEl, downloadBtnEl, clearBtnEl) {
             if (fileInput.files.length > 0) {
                 fileNameEl.textContent = fileInput.files[0].name;
+                fileNameEl.classList.remove('text-slate-400');
                 fileNameEl.classList.add('text-blue-600', 'font-semibold');
+                if (downloadBtnEl) downloadBtnEl.classList.remove('hidden');
+                if (clearBtnEl) clearBtnEl.classList.remove('hidden');
             } else {
                 fileNameEl.innerHTML = 'ここにドラッグ＆ドロップ<br>またはクリックして選択';
+                fileNameEl.classList.add('text-slate-400');
                 fileNameEl.classList.remove('text-blue-600', 'font-semibold');
+                if (downloadBtnEl) downloadBtnEl.classList.add('hidden');
+                if (clearBtnEl) clearBtnEl.classList.add('hidden');
+            }
+        }
+        
+        clearPreviousBtn.addEventListener('click', () => {
+            if (previousFileInput.files.length > 0) {
+                if (confirm('前回ファイルをクリアします。よろしいですか？')) {
+                    previousFileInput.value = '';
+                    const dt = new DataTransfer();
+                    previousFileInput.files = dt.files;
+                    updateFileName(previousFileInput, previousFileNameEl, downloadPreviousBtn, clearPreviousBtn);
+                }
+            }
+        });
+
+        downloadPreviousBtn.addEventListener('click', () => {
+            if (previousFileInput.files[0]) {
+                const file = previousFileInput.files[0];
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(file);
+                link.download = file.name;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        });
+
+        async function loadPreviousFileFromS3() {
+            try {
+                const response = await fetch('/api/load_previous_file');
+                if (!response.ok) throw new Error((await response.json()).error || 'S3からの読込に失敗');
+                const blob = await response.blob();
+                const fileName = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'previous_processed_file.csv';
+                const file = new File([blob], fileName, { type: 'text/csv' });
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                previousFileInput.files = dt.files;
+                updateFileName(previousFileInput, previousFileNameEl, downloadPreviousBtn, clearPreviousBtn);
+            } catch (error) {
+                previousFileNameEl.innerHTML = 'S3にファイル無<br>またはクリックして選択';
+                previousFileNameEl.classList.add('text-slate-400');
+                downloadPreviousBtn.classList.add('hidden');
+                clearPreviousBtn.classList.add('hidden');
             }
         }
 
-        // --- 「処理実行」ボタンの処理 ---
-        processBtn.addEventListener('click', async () => {
+        async function saveLatestFileToS3() {
+            s3StatusEl.innerHTML = `<p class="text-sm text-yellow-600 flex items-center"><i class="fa-solid fa-cloud-arrow-up mr-2 spinner"></i>S3へ前回ファイルを保存中...</p>`;
             if (!latestFileInput.files[0]) {
-                showError('「最新の案件ファイル」を選択してください。');
-                return;
+                 s3StatusEl.innerHTML = `<p class="text-sm text-red-600">S3保存エラー: 最新ファイルが見つかりません。</p>`;
+                 return;
             }
             const formData = new FormData();
-            formData.append('ai_prompt', aiPromptEditor.value); // 新しい入力欄から取得
-            formData.append('latest_file', latestFileInput.files[0]);
-            if (previousFileInput.files[0]) {
-                formData.append('previous_file', previousFileInput.files[0]);
+            formData.append('file_to_save', latestFileInput.files[0]);
+            try {
+                const response = await fetch('/api/save_latest_file', { method: 'POST', body: formData });
+                if (!response.ok) throw new Error((await response.json()).error || 'S3への保存に失敗');
+                s3StatusEl.innerHTML = `<p class="text-sm text-green-600 flex items-center"><i class="fa-solid fa-check-circle mr-2"></i>S3への保存が完了しました。</p>`;
+            } catch (error) {
+                s3StatusEl.innerHTML = `<p class="text-sm text-red-600">S3保存エラー: ${error.message}</p>`;
             }
-            formData.append('filter_date_column', document.getElementById('filter_date_column').value);
-            formData.append('filter_date_value', document.getElementById('filter_date_value').value);
-            formData.append('keyword_column', document.getElementById('keyword_column').value);
-            formData.append('keywords', document.getElementById('keywords').value);
-            formData.append('search_type', document.querySelector('input[name="search_type"]:checked').value);
-
-            // ★★★ AI日付自動整形の設定をサーバーに送るコードを追加 ★★★
-            const aiDateEnabledCheckbox = document.getElementById('ai_date_format_enabled');
-            if (aiDateEnabledCheckbox.checked) {
+        }
+        
+        processBtn.addEventListener('click', async () => {
+            if (!latestFileInput.files[0]) return showError('「最新の案件ファイル」を選択してください。');
+            s3StatusEl.innerHTML = '';
+            const formData = new FormData();
+            formData.append('ai_prompt', aiPromptEditor.value);
+            formData.append('latest_file', latestFileInput.files[0]);
+            if (previousFileInput.files[0]) formData.append('previous_file', previousFileInput.files[0]);
+            
+            // ★★★ 2つの日付フィルターの情報を送信 ★★★
+            formData.append('filter_date_column_1', document.getElementById('filter_date_column_1').value);
+            formData.append('filter_date_value_1', document.getElementById('filter_date_value_1').value);
+            formData.append('filter_date_column_2', document.getElementById('filter_date_column_2').value);
+            formData.append('filter_date_value_2', document.getElementById('filter_date_value_2').value);
+            
+            if (document.getElementById('ai_date_format_enabled').checked) {
                 formData.append('ai_date_format_enabled', 'on');
                 formData.append('ai_date_format_column', document.getElementById('ai_date_format_column').value);
             }
-
+            formData.append('keyword_column', document.getElementById('keyword_column').value);
+            formData.append('keywords', document.getElementById('keywords').value);
+            formData.append('search_type', document.querySelector('input[name="search_type"]:checked').value);
             showLoading('CSVファイルを処理中...');
             try {
                 const response = await fetch('/api/process', { method: 'POST', body: formData });
                 const result = await response.json();
-                if (!response.ok) { throw new Error(result.error || '不明なエラーが発生しました。'); }
+                if (!response.ok) throw new Error(result.error || '不明なエラーが発生しました。');
                 showResult(result);
                 processedCsvData = result.csvData;
+                await saveLatestFileToS3();
             } catch (error) {
                 showError(error.message);
             }
         });
         
-        // --- ダウンロードボタンの処理 ---
         downloadBtn.addEventListener('click', () => {
             if (processedCsvData) {
                 const blob = new Blob([processedCsvData], { type: 'text/csv;charset=utf-8-sig;' });
@@ -346,19 +364,15 @@
             }
         });
 
-        // --- AIチャットの処理 ---
         let isComposing = false;
-        aiChatInput.addEventListener('compositionstart', () => { isComposing = true; });
-        aiChatInput.addEventListener('compositionend', () => { isComposing = false; });
+        aiChatInput.addEventListener('compositionstart', () => isComposing = true);
+        aiChatInput.addEventListener('compositionend', () => isComposing = false);
         
         async function handleAiChat() {
             if (isComposing) return;
             const question = aiChatInput.value.trim();
             if (!question) return;
-            if (!latestFileObject) {
-                addChatMessage("先に「最新の案件ファイル」をアップロードしてください。", "ai");
-                return;
-            }
+            if (!latestFileObject) return addChatMessage("先に「最新の案件ファイル」をアップロードしてください。", "ai");
             addChatMessage(question, "user");
             aiChatInput.value = '';
             addChatMessage("考え中...", "ai", true);
@@ -367,11 +381,11 @@
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ question: question, csv_content: csvContent }),
+                    body: JSON.stringify({ question, csv_content: csvContent }),
                 });
                 const result = await response.json();
                 aiChatBox.querySelector('.thinking')?.parentElement.remove();
-                if (!response.ok) { throw new Error(result.error || 'AIチャットでエラーが発生しました。'); }
+                if (!response.ok) throw new Error(result.error || 'AIチャットでエラーが発生しました。');
                 addChatMessage(result.reply, "ai");
             } catch (error) {
                 aiChatBox.querySelector('.thinking')?.parentElement.remove();
@@ -393,11 +407,9 @@
             const bubble = document.createElement('div');
             bubble.classList.add('chat-bubble', 'p-3', 'rounded-lg', 'w-fit');
             if (sender === 'user') {
-                bubbleWrapper.classList.add('justify-end');
-                bubble.classList.add('user');
+                bubbleWrapper.classList.add('justify-end', 'user');
             } else {
-                bubbleWrapper.classList.add('justify-start');
-                bubble.classList.add('ai');
+                bubbleWrapper.classList.add('justify-start', 'ai');
             }
             if (isThinking) {
                 bubble.innerHTML = `<i class="fas fa-spinner spinner"></i><span class="ml-2">考え中...</span>`;
@@ -410,7 +422,6 @@
             aiChatBox.scrollTop = aiChatBox.scrollHeight;
         }
 
-        // --- UIの表示を更新するための部品 ---
         function showLoading(message) {
             resultContent.innerHTML = `<div class="flex items-center justify-center h-full"><i class="fas fa-spinner fa-spin text-2xl text-blue-500 mr-3"></i><p class="text-slate-600">${message}</p></div>`;
             downloadBtn.classList.add('hidden');
@@ -434,10 +445,10 @@
             downloadBtn.classList.remove('hidden');
         }
 
-        // --- ページ読み込み時の初期化処理 ---
-        setupDropZone(latestDropZone, latestFileInput, latestFileNameEl);
-        setupDropZone(previousDropZone, previousFileInput, previousFileNameEl);
-        loadTemplates(); // 最初にテンプレートを読み込む
+        setupDropZone(latestDropZone, latestFileInput, latestFileNameEl, null, null);
+        setupDropZone(previousDropZone, previousFileInput, previousFileNameEl, downloadPreviousBtn, clearPreviousBtn);
+        loadTemplates();
+        loadPreviousFileFromS3();
     });
     </script>
 </body>

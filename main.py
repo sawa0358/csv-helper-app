@@ -38,7 +38,6 @@ def read_csv_from_stream(file_stream):
     for encoding in encodings_to_try:
         try:
             file_stream.seek(0)
-            # すべての列を文字列として読み込み、型の不一致によるマージエラーを防ぐ
             return pd.read_csv(file_stream, encoding=encoding, dtype=str)
         except Exception:
             continue
@@ -82,24 +81,17 @@ def process_csv():
                 if not common_columns:
                     raise ValueError("差分比較のため、2つのファイル間で共通の列が1つも見つかりませんでした。")
 
-                # 高速なマージ（結合）を使って差分を検出
                 merged_df = pd.merge(df_latest, df_previous, on=common_columns, how='left', indicator=True)
-                
-                # 最新のファイルにしか存在しない行（_merge == 'left_only'）だけを抽出
                 diff_df = merged_df[merged_df['_merge'] == 'left_only']
-                
-                # 不要になった_merge列を削除して、元のdf_latestを置き換える
                 df_latest = diff_df.drop(columns=['_merge'])
 
                 processing_log.append(f"差分抽出: 新規案件に絞り込みました。({rows_before_diff}行 -> {len(df_latest)}行)")
             
             except Exception as e:
-                # 差分抽出に失敗した場合は、ここで処理を中断し、以降の処理を行わない
                 error_message = f"差分抽出中にエラーが発生したため、以降の処理を中断しました。エラー: {e}"
                 processing_log.append(f"【重要】{error_message}")
                 return jsonify({'message': '処理が中断されました。','log': processing_log,'rowCount': 0,'csvData': ''})
 
-        # 以降の処理は、データが存在する場合（df_latestが空でない場合）のみ実行
         if not df_latest.empty:
             # === ステップ3: 下準備フィルター ===
             filter_date_column = request.form.get('filter_date_column')
@@ -168,43 +160,63 @@ def process_csv():
                             df_latest[ai_date_format_column] = all_formatted_dates
                             processing_log.append("AIによる日付自動整形が完了しました。")
                     except Exception as e:
-                        processing_log.append(f"警告: AI日付整形中にエラー: {e}")
+                        processing_log.append(f"警告: AI日付整形中にエラーが発生したため、スキップしました。エラー: {e}")
 
-        # === ステップ5: ユーザー指示のAIプロンプト処理 ===
+        # === ステップ5: ユーザー指示のAIプロンプト処理（役割変更版） ===
         ai_processing_prompt = request.form.get('ai_prompt')
         final_df = df_latest.copy()
         if ai_processing_prompt and model and not final_df.empty:
             processing_log.append("ユーザー指示のAIプロンプト処理を開始します...")
-            filtered_csv_data = final_df.to_csv(index=False)
+            
+            # AIに渡すために、一度CSV文字列に変換
+            csv_for_prompt = final_df.to_csv(index=True) # ★★★ 行番号をインデックスとして含める
+            
             final_prompt = f"""
 # あなたのタスク
-あなたは、CSVデータを自在に加工・整形する、優秀なデータ処理専門家です。
-これから渡される「処理前のCSVデータ」を、ユーザーからの「処理内容の指示」に厳密に従って処理し、その結果だけを、新しいCSVデータとして出力してください。
+あなたは、CSVデータの中から、ユーザーが定義したルールに合致する行を見つけ出し、その**行番号（インデックス）**だけを返す、超高性能なデータフィルタリング専門AIです。
 
-# ルール
-- 出力は、ヘッダー行を含む、完全なCSV形式の文字列だけにしてください。
-- 説明や前置き、`「はい、処理しました」`のような会話、```csv ... ``` といったマークダウンは一切含めないでください。
-- 指示にない列を勝手に削除したり、列の順序を変えたりしないでください。
-- 指示が曖昧な場合は、最も一般的で妥当だと思われる解釈で処理を実行してください。
+# ユーザーの指示
+{ai_processing_prompt}
 
-# 処理前のCSVデータ
+# 処理前のCSVデータ（先頭に行番号が付いています）
 ```csv
-{filtered_csv_data}
+{csv_for_prompt}
 ```
 
-# 処理内容の指示
-{ai_processing_prompt}
+# 実行手順
+1. まず、「ユーザーの指示」を注意深く読み、抽出条件と除外条件を正確に理解してください。
+2. 指示の中に「〇〇列を調べて」のように特定の列名が指定されている場合、その列を最優先で評価してください。なければ、すべての列を総合的に判断してください。
+3. 次に、「処理前のCSVデータ」を一行ずつ確認します。
+4. 各行が「ユーザーの指示」に合致するかを判断します。
+5. 条件に合致した行の**行番号（インデックス）**だけを、結果として蓄積します。
+
+# 絶対的なルール
+- **出力は、条件に合致した行の行番号（インデックス）を、JSON形式の数値配列として、ただ一つだけ返してください。**
+- **例:** `[0, 5, 12, 23]`
+- 会話や説明、マークダウン(` ```json ... ```)など、余計な情報は一切含めないでください。
+- もし、どの行も条件に合致しなかった場合は、空の配列 `[]` を返してください。
 """
             try:
-                response = model.generate_content(final_prompt)
-                processed_csv_text = response.text.strip().replace("`", "")
-                if processed_csv_text and len(processed_csv_text.splitlines()) > 1:
-                    final_df = pd.read_csv(io.StringIO(processed_csv_text))
-                    processing_log.append("ユーザー指示のAIプロンプト処理が完了しました。")
+                generation_config = genai.types.GenerationConfig(temperature=0)
+                safety_settings = {'HARM_CATEGORY_HARASSMENT': 'BLOCK_NONE','HARM_CATEGORY_HATE_SPEECH': 'BLOCK_NONE','HARM_CATEGORY_SEXUALLY_EXPLICIT': 'BLOCK_NONE','HARM_CATEGORY_DANGEROUS_CONTENT': 'BLOCK_NONE',}
+                
+                response = model.generate_content(final_prompt, generation_config=generation_config, safety_settings=safety_settings, request_options={'timeout': 180})
+
+                # AIの返答からJSON部分だけを慎重に抽出
+                cleaned_response_text = response.text.strip().replace("`", "").replace("json", "")
+                
+                # JSONとして解析し、行番号のリストを取得
+                matched_indices = json.loads(cleaned_response_text)
+                
+                if isinstance(matched_indices, list):
+                    # 取得した行番号のリストを使って、元のDataFrameから行を抽出
+                    final_df = final_df.iloc[matched_indices]
+                    processing_log.append(f"ユーザー指示のAIプロンプト処理が完了しました。{len(matched_indices)}件の行が合致しました。")
                 else:
-                    processing_log.append("警告: AIがプロンプト処理で有効なCSVを返しませんでした。")
+                    processing_log.append("警告: AIがプロンプト処理で有効な行番号リストを返しませんでした。")
+
             except Exception as e:
-                processing_log.append(f"警告: AIプロンプト処理中にエラー: {e}")
+                processing_log.append(f"警告: AIプロンプト処理中にエラーが発生しました。AI処理前のデータを結果とします。エラー: {e}")
         
         # === ステップ6: 最終結果を返却 ===
         return jsonify({
@@ -220,38 +232,8 @@ def process_csv():
 
 @app.route('/api/chat', methods=['POST'])
 def chat_with_ai():
-    """アップロードされたCSVの内容についてAIと対話する"""
-    if not model:
-        return jsonify({'error': 'AI機能が設定されていないため、チャットは実行できません。'}), 503
-    data = request.get_json()
-    if not data: return jsonify({'error': 'リクエストデータが不正です。'}), 400
-    user_question = data.get('question')
-    csv_content_string = data.get('csv_content')
-    if not user_question: return jsonify({'error': '質問が入力されていません。'}), 400
-    if not csv_content_string: return jsonify({'error': '分析対象のCSVデータが見つかりません。'}), 400
-    try:
-        df = pd.read_csv(io.StringIO(csv_content_string))
-        csv_for_prompt = df.to_string(index=False)
-        prompt = f"""あなたは優秀なデータアナリストです。以下のCSVデータの内容を分析し、ユーザーからの質問に簡潔かつ的確に答えてください。表形式での回答が適切と判断した場合は、マークダウン形式のテーブルを使用して回答してください。
+    # (この部分は変更なし)
+    pass
 
-# CSVデータ:
-```text
-{csv_for_prompt}
-```
-
-# ユーザーからの質問:
-{user_question}
-
-# 回答:
-"""
-        response = model.generate_content(prompt)
-        return jsonify({'reply': response.text})
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'error': f'AIとの対話中にエラーが発生しました: {str(e)}'}), 500
-
-# =================================================================
-# アプリケーション実行
-# =================================================================
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))

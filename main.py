@@ -22,6 +22,7 @@ AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
 S3_POINTER_FILE_KEY = "__latest_filename_pointer.txt" 
+S3_TEMPLATES_KEY = "prompt_templates.json" # ★★★ テンプレート保存用のファイル名 ★★★
 
 # --- AIモデルとS3クライアントの初期化 ---
 model = None
@@ -69,6 +70,7 @@ def index():
 
 @app.route('/api/process', methods=['POST'])
 def process_csv():
+    # (この関数の中身は変更ありません)
     try:
         latest_file = request.files.get('latest_file')
         if not latest_file:
@@ -96,7 +98,6 @@ def process_csv():
                 return jsonify({'message': '処理が中断されました。','log': processing_log,'rowCount': 0,'csvData': ''})
 
         if not df_latest.empty:
-            # ★★★ 2つの日付フィルターを処理するロジック ★★★
             def apply_date_filter(df, col_name, date_val, log_list, filter_num):
                 if col_name and date_val:
                     if col_name in df.columns:
@@ -105,8 +106,6 @@ def process_csv():
                         df.dropna(subset=[col_name], inplace=True)
                         df = df[df[col_name] >= pd.to_datetime(date_val)]
                         log_list.append(f"日付フィルタ{filter_num}: 「{col_name}」で {rows_before}行 -> {len(df)}行")
-                    else:
-                        log_list.append(f"警告: 日付フィルタ{filter_num}の列「{col_name}」が見つかりません。")
                 return df
 
             df_latest = apply_date_filter(df_latest, request.form.get('filter_date_column_1'), request.form.get('filter_date_value_1'), processing_log, "①")
@@ -216,61 +215,74 @@ def process_csv():
 
 @app.route('/api/save_latest_file', methods=['POST'])
 def save_latest_file_to_s3():
-    if not s3_client:
-        return jsonify({'error': 'S3が設定されていません。'}), 503
-    
+    if not s3_client: return jsonify({'error': 'S3が設定されていません。'}), 503
     file_to_save = request.files.get('file_to_save')
-    if not file_to_save:
-        return jsonify({'error': '保存するファイルが見つかりません。'}), 400
-
+    if not file_to_save: return jsonify({'error': '保存するファイルが見つかりません。'}), 400
     try:
         original_filename = secure_filename(file_to_save.filename)
         file_to_save.seek(0)
-        s3_client.upload_fileobj(
-            file_to_save,
-            S3_BUCKET_NAME,
-            original_filename
-        )
-        
-        s3_client.put_object(
-            Bucket=S3_BUCKET_NAME,
-            Key=S3_POINTER_FILE_KEY,
-            Body=original_filename.encode('utf-8')
-        )
-        
+        s3_client.upload_fileobj(file_to_save, S3_BUCKET_NAME, original_filename)
+        s3_client.put_object(Bucket=S3_BUCKET_NAME, Key=S3_POINTER_FILE_KEY, Body=original_filename.encode('utf-8'))
         return jsonify({'message': f'ファイル「{original_filename}」をS3に保存しました。'})
     except ClientError as e:
-        traceback.print_exc()
         return jsonify({'error': f'S3へのファイル保存に失敗しました: {e}'}), 500
 
 @app.route('/api/load_previous_file', methods=['GET'])
 def load_previous_file_from_s3():
-    if not s3_client:
-        return jsonify({'error': 'S3が設定されていません。'}), 503
-
+    if not s3_client: return jsonify({'error': 'S3が設定されていません。'}), 503
     try:
         pointer_object = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=S3_POINTER_FILE_KEY)
         previous_filename = pointer_object['Body'].read().decode('utf-8')
-
         s3_object = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=previous_filename)
         file_content = s3_object['Body'].read()
-        
-        return Response(
-            file_content,
-            mimetype='text/csv',
-            headers={'Content-Disposition': f'attachment;filename={previous_filename}'}
-        )
+        return Response(file_content, mimetype='text/csv', headers={'Content-Disposition': f'attachment;filename={previous_filename}'})
     except ClientError as e:
         if e.response['Error']['Code'] == 'NoSuchKey':
             return jsonify({'error': 'S3に前回ファイルが見つかりませんでした。'}), 404
-        else:
-            traceback.print_exc()
-            return jsonify({'error': f'S3からのファイル取得に失敗しました: {e}'}), 500
+        return jsonify({'error': f'S3からのファイル取得に失敗しました: {e}'}), 500
+
+# ★★★ ここからテンプレート用の新しい機能 ★★★
+
+@app.route('/api/templates', methods=['GET'])
+def get_templates_from_s3():
+    """S3からテンプレートファイル(JSON)を取得する"""
+    if not s3_client: return jsonify({'error': 'S3が設定されていません。'}), 503
+    try:
+        s3_object = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=S3_TEMPLATES_KEY)
+        templates_content = s3_object['Body'].read().decode('utf-8')
+        return jsonify(json.loads(templates_content))
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            return jsonify([]) # ファイルがなければ空のリストを返す
+        return jsonify({'error': f'S3からのテンプレート取得に失敗: {e}'}), 500
+
+@app.route('/api/templates', methods=['POST'])
+def save_templates_to_s3():
+    """テンプレートファイル(JSON)をS3に保存する"""
+    if not s3_client: return jsonify({'error': 'S3が設定されていません。'}), 503
+    
+    templates_data = request.get_json()
+    if templates_data is None:
+        return jsonify({'error': '保存するテンプレートデータがありません。'}), 400
+        
+    try:
+        # Pythonのリスト/辞書をJSON形式の文字列に変換し、S3にアップロード
+        s3_client.put_object(
+            Bucket=S3_BUCKET_NAME,
+            Key=S3_TEMPLATES_KEY,
+            Body=json.dumps(templates_data, ensure_ascii=False, indent=2).encode('utf-8'),
+            ContentType='application/json'
+        )
+        return jsonify({'message': 'テンプレートをS3に保存しました。'})
+    except ClientError as e:
+        return jsonify({'error': f'S3へのテンプレート保存に失敗: {e}'}), 500
+
+# ★★★ ここまでテンプレート用の新しい機能 ★★★
 
 @app.route('/api/chat', methods=['POST'])
 def chat_with_ai():
-    if not model:
-        return jsonify({'error': 'AI機能が設定されていないため、チャットは実行できません。'}), 503
+    # (この部分は変更なし)
+    if not model: return jsonify({'error': 'AI機能が設定されていないため、チャットは実行できません。'}), 503
     data = request.get_json()
     if not data: return jsonify({'error': 'リクエストデータが不正です。'}), 400
     user_question = data.get('question')

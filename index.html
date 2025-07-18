@@ -65,7 +65,6 @@
                 <div class="p-6 rounded-lg shadow-md" style="background-color: #edecc0;">
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center"><i class="fa-solid fa-gear mr-3 text-slate-500"></i>下準備オプション</h2>
                     <div class="space-y-4">
-                        <!-- ★★★ 1つ目の日付フィルター ★★★ -->
                         <div>
                             <label for="filter_date_column_1" class="block text-sm font-medium text-slate-700">日付でフィルタリング ①</label>
                             <div class="grid grid-cols-2 gap-2 mt-1">
@@ -73,7 +72,6 @@
                                 <input type="date" id="filter_date_value_1" class="bg-white block w-full rounded-md p-2">
                             </div>
                         </div>
-                        <!-- ★★★ 2つ目の日付フィルター ★★★ -->
                         <div>
                             <label for="filter_date_column_2" class="block text-sm font-medium text-slate-700">日付でフィルタリング ②</label>
                             <div class="grid grid-cols-2 gap-2 mt-1">
@@ -175,19 +173,40 @@
         let processedCsvData = null;
         let latestFileObject = null;
 
-        function loadTemplates() {
-            templates = JSON.parse(localStorage.getItem('csv_prompt_templates_v2') || '[]');
-            templateSelect.innerHTML = '<option value="">テンプレートを選択...</option>';
-            templates.forEach((template, index) => {
-                const option = document.createElement('option');
-                option.value = index;
-                option.textContent = template.name;
-                templateSelect.appendChild(option);
-            });
+        // ★★★ S3からテンプレートを読み込むように変更 ★★★
+        async function loadTemplates() {
+            try {
+                const response = await fetch('/api/templates');
+                if (!response.ok) throw new Error('テンプレートの読み込みに失敗しました。');
+                templates = await response.json();
+                
+                templateSelect.innerHTML = '<option value="">テンプレートを選択...</option>';
+                templates.forEach((template, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = template.name;
+                    templateSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error(error);
+                alert(error.message);
+            }
         }
 
-        function saveTemplatesToStorage() {
-            localStorage.setItem('csv_prompt_templates_v2', JSON.stringify(templates));
+        // ★★★ テンプレートをS3に保存するように変更 ★★★
+        async function saveTemplatesToS3() {
+            try {
+                const response = await fetch('/api/templates', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(templates)
+                });
+                if (!response.ok) throw new Error('テンプレートの保存に失敗しました。');
+                await response.json();
+            } catch (error) {
+                console.error(error);
+                alert(error.message);
+            }
         }
 
         templateSelect.addEventListener('change', () => {
@@ -195,24 +214,24 @@
             aiPromptEditor.value = (selectedIndex !== "") ? templates[selectedIndex].content : "";
         });
         
-        saveTemplateBtn.addEventListener('click', () => {
+        saveTemplateBtn.addEventListener('click', async () => {
             const content = aiPromptEditor.value.trim();
             if (!content) return alert('テンプレートとして保存する内容を指示内容エリアに入力してください。');
             const name = prompt('テンプレート名を入力してください:', `新規テンプレート ${templates.length + 1}`);
             if (!name) return;
             templates.push({ name, content });
-            saveTemplatesToStorage();
-            loadTemplates();
+            await saveTemplatesToS3(); // S3に保存
+            loadTemplates(); // 再読み込み
             templateSelect.value = templates.length - 1;
         });
 
-        deleteTemplateBtn.addEventListener('click', () => {
+        deleteTemplateBtn.addEventListener('click', async () => {
             const selectedIndex = templateSelect.value;
             if (selectedIndex === "") return alert('削除するテンプレートをプルダウンから選択してください。');
             if (confirm(`「${templates[selectedIndex].name}」を削除しますか？`)) {
                 templates.splice(selectedIndex, 1);
-                saveTemplatesToStorage();
-                loadTemplates();
+                await saveTemplatesToS3(); // S3に保存
+                loadTemplates(); // 再読み込み
                 aiPromptEditor.value = "";
             }
         });
@@ -325,13 +344,10 @@
             formData.append('ai_prompt', aiPromptEditor.value);
             formData.append('latest_file', latestFileInput.files[0]);
             if (previousFileInput.files[0]) formData.append('previous_file', previousFileInput.files[0]);
-            
-            // ★★★ 2つの日付フィルターの情報を送信 ★★★
             formData.append('filter_date_column_1', document.getElementById('filter_date_column_1').value);
             formData.append('filter_date_value_1', document.getElementById('filter_date_value_1').value);
             formData.append('filter_date_column_2', document.getElementById('filter_date_column_2').value);
             formData.append('filter_date_value_2', document.getElementById('filter_date_value_2').value);
-            
             if (document.getElementById('ai_date_format_enabled').checked) {
                 formData.append('ai_date_format_enabled', 'on');
                 formData.append('ai_date_format_column', document.getElementById('ai_date_format_column').value);
@@ -447,7 +463,7 @@
 
         setupDropZone(latestDropZone, latestFileInput, latestFileNameEl, null, null);
         setupDropZone(previousDropZone, previousFileInput, previousFileNameEl, downloadPreviousBtn, clearPreviousBtn);
-        loadTemplates();
+        loadTemplates(); // ★★★ ページ読み込み時にS3からテンプレートを取得 ★★★
         loadPreviousFileFromS3();
     });
     </script>

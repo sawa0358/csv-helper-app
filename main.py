@@ -28,7 +28,7 @@ S3_TEMPLATES_KEY = "prompt_templates.json" # ★★★ テンプレート保存�
 model = None
 try:
     if GEMINI_API_KEY:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash-lite') # 最新の軽量モデルに変更
         print("Geminiモデルが正常に初期化されました。")
     else:
         print("警告: GEMINI_API_KEYが設定されていません。AI機能は無効になります。")
@@ -126,38 +126,81 @@ def process_csv():
             ai_date_format_column = request.form.get('ai_date_format_column')
             if ai_date_format_enabled and ai_date_format_column and model and ai_date_format_column in df_latest.columns:
                 processing_log.append(f"AIによる日付自動整形を開始 (対象列: {ai_date_format_column})")
-                original_date_series = df_latest[ai_date_format_column].fillna('').astype(str)
-                all_formatted_dates = []
-                batch_size = 100
-                try:
-                    for i in range(0, len(original_date_series), batch_size):
-                        batch_data_list = original_date_series.iloc[i:i+batch_size].to_list()
-                        date_formatting_prompt = f"""
+                
+                # 元のデータを最終結果用の変数として用意します
+                final_dates = df_latest[ai_date_format_column].fillna('').astype(str)
+                # その中から、空白ではない、本当に処理が必要なデータだけを抜き出します
+                non_empty_dates = final_dates[final_dates != '']
+                
+                if not non_empty_dates.empty:
+                    batch_size = 100
+                    has_error = False
+                    
+                    # 整形済みのデータを、元の場所に戻すための準備をします
+                    formatted_dates_series = non_empty_dates.copy()
+
+                    # 空白でないデータを、100件ずつの「かたまり」にして処理します
+                    for i in range(0, len(non_empty_dates), batch_size):
+                        batch_series = non_empty_dates.iloc[i:i+batch_size]
+                        
+                        try:
+                            # 同じ日付が複数ある場合もAIが正しく処理できるよう、重複を除いたリストを作成します
+                            unique_batch_list = batch_series.unique().tolist()
+
+                            date_formatting_prompt = f"""
 # あなたのタスク
 あなたは、日本の様々な日付表現を、厳格なルールに従って「YYYY-MM-DD」形式の文字列に変換する、超高性能な日付整形専門AIです。
-これからJSON形式の文字列配列を受け取ります。各文字列をルールに従って解析し、変換結果をJSON配列で返してください。
+これからJSON形式の文字列配列を受け取ります。各文字列をキーとして、変換結果を値とする**JSONオブジェクト（辞書）**を返してください。
 
 # 厳格なルール
-- **出力形式:** 必ず入力と同じ数の要素を持つJSON配列の文字列（例: `["2025-07-01", "", "2025-08-15"]`）として回答してください。会話や説明、マークダウン(` ```json ... ```)は一切含めないでください。
-- **基本変換:** 和暦(令和,平成,昭和)、西暦、区切り文字（「.」「・」「/」など）を解釈し、「YYYY-MM-DD」に変換してください。（例: 「R7.7.1」→「2025-07-01」）
-- **曜日と不要な文字の削除:** 曜日（(月),(火)など）や前後の不要な文字列はすべて削除してください。
-- **文字列のみの場合:** 日付と解釈できない文字列のみの場合は、空文字列（""）にしてください。
-- **範囲表現:** 「A〜B」のような範囲を示す場合は、必ず「未来の方の日付」だけを残してください。AとBのどちらが未来かは、日付を比較して判断してください。（例: 「2025-07-01〜令和7年6月30日」→「2025-07-01」）
+- **【最重要】出力形式:** 必ず**JSONオブジェクト**（辞書）の形式で回答してください。入力配列の各要素がキーとなり、変換結果が値となります。会話や説明、マークダウンは一切含めないでください。
+- **【最重要】キーの維持:** 入力配列に含まれる全ての文字列を、必ずキーとして含めてください。一つも省略してはいけません。
+- **日付と解釈不能な文字:** 日付と解釈できない文字列（例：「該当なし」）がキーの場合、その値は必ず空文字列（""）にしてください。
+- **【具体例】**
+  - **入力:** `["令和7年7月1日", "8.3.31", "該当なし"]`
+  - **出力:** `{{"令和7年7月1日": "2025-07-01", "8.3.31": "2029-03-31", "該当なし": ""}}`
+- **基本変換:** 和暦(令和,平成,昭和)、西暦、区切り文字（「.」「・」「/」など）を解釈し、「YYYY-MM-DD」に変換してください。
+- **不要な文字の削除:** 曜日や前後の不要な文字列はすべて削除してください。
+- **範囲表現:** 「A〜B」のような範囲を示す場合は、必ず「未来の方の日付」だけを残してください。
 - **複数日付:** 複数の日付が並んでいる場合も、「未来の方の日付」だけを残してください。
-- **文字と日付の混在:** 「A:文字〜B:日付」のように、日付と解釈できないものが含まれる場合は、日付と解釈できる方だけを変換対象にしてください。
 
 # 変換対象のJSON配列
-{json.dumps(batch_data_list)}
+{json.dumps(unique_batch_list)}
 """
-                        response = model.generate_content(date_formatting_prompt)
-                        cleaned_response_text = response.text.strip().replace("`", "").replace("json", "")
-                        batch_formatted_dates = json.loads(cleaned_response_text)
-                        all_formatted_dates.extend(batch_formatted_dates if isinstance(batch_formatted_dates, list) and len(batch_formatted_dates) == len(batch_data_list) else batch_data_list)
-                    if len(all_formatted_dates) == len(df_latest):
-                        df_latest[ai_date_format_column] = all_formatted_dates
-                        processing_log.append("AIによる日付自動整形が完了しました。")
-                except Exception as e:
-                    processing_log.append(f"警告: AI日付整形中にエラーが発生したため、スキップしました。エラー: {e}")
+                            response = model.generate_content(date_formatting_prompt, request_options={'timeout': 180})
+                            cleaned_response_text = response.text.strip()
+                            
+                            # AIが返す可能性のある余計な文字を取り除き、純粋なJSONだけを抽出します
+                            start_index = cleaned_response_text.find('{')
+                            end_index = cleaned_response_text.rfind('}')
+                            
+                            if start_index != -1 and end_index != -1:
+                                json_string = cleaned_response_text[start_index:end_index+1]
+                                formatted_map = json.loads(json_string)
+
+                                if isinstance(formatted_map, dict):
+                                    # AIからの辞書回答を元に、元のデータに対応する整形結果を当てはめます
+                                    batch_series_updated = batch_series.map(formatted_map).fillna(batch_series)
+                                    formatted_dates_series.update(batch_series_updated)
+                                else:
+                                    raise ValueError("AIの応答がJSONオブジェクト（辞書）ではありません。")
+                            else:
+                                raise ValueError("AIの応答にJSONオブジェクト（辞書）が含まれていません。")
+
+                        except Exception as e:
+                            has_error = True
+                            processing_log.append(f"警告: 日付整形のバッチ処理でエラー発生。このバッチはスキップされます。エラー: {str(e)}")
+                    
+                    # 整形が成功したデータで、元のデータを更新します
+                    final_dates.update(formatted_dates_series)
+                    df_latest[ai_date_format_column] = final_dates
+
+                    if has_error:
+                        processing_log.append("AIによる日付自動整形が完了しました（一部エラーあり）。")
+                    else:
+                        processing_log.append("AIによる日付自動整形が正常に完了しました。")
+                else:
+                    processing_log.append("AIによる日付自動整形: 対象列に整形すべきデータがありませんでした。")
 
         ai_processing_prompt = request.form.get('ai_prompt')
         final_df = df_latest.copy()
@@ -250,11 +293,20 @@ def get_templates_from_s3():
     try:
         s3_object = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=S3_TEMPLATES_KEY)
         templates_content = s3_object['Body'].read().decode('utf-8')
+        # ファイルが空の場合も考慮する
+        if not templates_content.strip():
+            return jsonify([])
         return jsonify(json.loads(templates_content))
     except ClientError as e:
         if e.response['Error']['Code'] == 'NoSuchKey':
             return jsonify([]) # ファイルがなければ空のリストを返す
         return jsonify({'error': f'S3からのテンプレート取得に失敗: {e}'}), 500
+    except json.JSONDecodeError:
+        # S3上のファイルが不正なJSON形式だった場合のエラー
+        return jsonify({'error': f'S3上のテンプレートファイル({S3_TEMPLATES_KEY})が不正なJSON形式です。'}), 500
+    except Exception as e:
+        # その他の予期せぬエラー
+        return jsonify({'error': f'テンプレートの読み込み中に予期せぬエラーが発生しました: {e}'}), 500
 
 @app.route('/api/templates', methods=['POST'])
 def save_templates_to_s3():

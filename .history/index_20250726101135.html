@@ -478,12 +478,10 @@
         function showLoading(message) {
             resultContent.innerHTML = `<div class="flex items-center justify-center h-full"><i class="fas fa-spinner fa-spin text-2xl text-blue-500 mr-3"></i><p class="text-slate-600">${message}</p></div>`;
             downloadBtn.classList.add('hidden');
-            aiChatSuggestion.classList.add('hidden');
         }
         function showError(errorMessage) {
             resultContent.innerHTML = `<div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md"><p class="font-bold">エラー発生</p><p>${errorMessage}</p></div>`;
             downloadBtn.classList.add('hidden');
-            aiChatSuggestion.classList.add('hidden');
         }
         function showResult(result) {
             const logHtml = result.log.map(line => `<li class="text-sm text-slate-600">${line.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join('');

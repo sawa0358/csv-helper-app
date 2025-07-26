@@ -107,7 +107,7 @@
                 <div class="p-6 rounded-lg shadow-md" style="background-color: #ADD2F5;">
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center"><i class="fa-solid fa-robot mr-3 text-purple-500"></i>AIと対話して分析</h2>
                     <div id="ai-chat-box" class="h-64 overflow-y-auto bg-slate-100 rounded-md p-4 space-y-4">
-                        <div class="chat-bubble ai self-start"><p>「最新の案件ファイル」をアップロード後、ここでデータに関する質問ができます。<br><small>※処理実行後は、処理済みデータに対して分析できます。<br>※大きなファイル（5MB以上）の場合は、より具体的な質問をしてください。</small></p></div>
+                        <div class="chat-bubble ai self-start"><p>「最新の案件ファイル」をアップロード後、ここでデータに関する質問ができます。<br><small>※大きなファイル（5MB以上）の場合は、より具体的な質問をしてください。</small></p></div>
                     </div>
                     <div class="mt-4 flex gap-2">
                         <input type="text" id="ai-chat-input" placeholder="例: 〇〇の件数を教えて" class="bg-white flex-grow block w-full rounded-md p-2">
@@ -143,9 +143,6 @@
                 <div id="result-content" class="text-slate-500"><p>ここに処理のログや結果のプレビューが表示されます。</p></div>
                 <div id="s3-status" class="mt-4"></div>
                 <button id="download-btn" class="hidden mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-md"><i class="fa-solid fa-download mr-2"></i>結果をCSVでダウンロード</button>
-                <div id="ai-chat-suggestion" class="hidden mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                    <p class="text-sm text-blue-800"><i class="fa-solid fa-lightbulb mr-2"></i>処理が完了しました！上記の「AIと対話して分析」で処理済みデータについて質問できます。</p>
-                </div>
             </div>
         </div>
     </div>
@@ -172,7 +169,6 @@
         const aiChatBox = document.getElementById('ai-chat-box');
         const aiChatInput = document.getElementById('ai-chat-input');
         const aiChatSendBtn = document.getElementById('ai-chat-send-btn');
-        const aiChatSuggestion = document.getElementById('ai-chat-suggestion');
         let templates = [];
         let processedCsvData = null;
         let latestFileObject = null;
@@ -367,7 +363,6 @@
                 if (!response.ok) throw new Error(result.error || '不明なエラーが発生しました。');
                 showResult(result);
                 processedCsvData = result.csvData;
-                processedCsvContent = result.csvData; // 処理済みCSVの内容を保存
                 await saveLatestFileToS3();
             } catch (error) {
                 showError(error.message);
@@ -478,12 +473,10 @@
         function showLoading(message) {
             resultContent.innerHTML = `<div class="flex items-center justify-center h-full"><i class="fas fa-spinner fa-spin text-2xl text-blue-500 mr-3"></i><p class="text-slate-600">${message}</p></div>`;
             downloadBtn.classList.add('hidden');
-            aiChatSuggestion.classList.add('hidden');
         }
         function showError(errorMessage) {
             resultContent.innerHTML = `<div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md"><p class="font-bold">エラー発生</p><p>${errorMessage}</p></div>`;
             downloadBtn.classList.add('hidden');
-            aiChatSuggestion.classList.add('hidden');
         }
         function showResult(result) {
             const logHtml = result.log.map(line => `<li class="text-sm text-slate-600">${line.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join('');
@@ -491,7 +484,6 @@
             if (rows.length < 2 || rows[0] === '') {
                 resultContent.innerHTML = `<h3 class="font-semibold text-lg mb-2">処理ログ</h3><ul class="list-disc list-inside space-y-1 mb-6">${logHtml}</ul><h3 class="font-semibold text-lg mb-2">結果プレビュー (0行)</h3><p class="text-slate-500">処理の結果、該当するデータがありませんでした。</p>`;
                 downloadBtn.classList.add('hidden');
-                aiChatSuggestion.classList.add('hidden');
                 return;
             }
             const headers = rows[0].split(',').map(h => h.trim());
@@ -499,7 +491,6 @@
             const tableHtml = `<div class="overflow-x-auto"><table class="min-w-full text-sm divide-y divide-slate-200"><thead class="bg-slate-50"><tr>${headers.map(h => `<th class="px-4 py-2 text-left font-semibold text-slate-600">${h}</th>`).join('')}</tr></thead><tbody class="divide-y divide-slate-200">${bodyRows.map(row => {if (row.trim() === '') return ''; return `<tr>${row.split(',').map(cell => `<td class="px-4 py-2 whitespace-nowrap">${cell.trim()}</td>`).join('')}</tr>`}).join('')}</tbody></table></div>${rows.length > 6 ? `<p class="text-xs text-slate-500 mt-2">...他 ${rows.length - 6} 行</p>` : ''}`;
             resultContent.innerHTML = `<h3 class="font-semibold text-lg mb-2">処理ログ</h3><ul class="list-disc list-inside space-y-1 mb-6">${logHtml}</ul><h3 class="font-semibold text-lg mb-2">結果プレビュー (${result.rowCount}行)</h3>${tableHtml}`;
             downloadBtn.classList.remove('hidden');
-            aiChatSuggestion.classList.remove('hidden'); // AIチャットの案内を表示
         }
 
         setupDropZone(latestDropZone, latestFileInput, latestFileNameEl, null, null);

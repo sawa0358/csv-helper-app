@@ -478,12 +478,10 @@
         function showLoading(message) {
             resultContent.innerHTML = `<div class="flex items-center justify-center h-full"><i class="fas fa-spinner fa-spin text-2xl text-blue-500 mr-3"></i><p class="text-slate-600">${message}</p></div>`;
             downloadBtn.classList.add('hidden');
-            aiChatSuggestion.classList.add('hidden');
         }
         function showError(errorMessage) {
             resultContent.innerHTML = `<div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md"><p class="font-bold">エラー発生</p><p>${errorMessage}</p></div>`;
             downloadBtn.classList.add('hidden');
-            aiChatSuggestion.classList.add('hidden');
         }
         function showResult(result) {
             const logHtml = result.log.map(line => `<li class="text-sm text-slate-600">${line.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join('');
@@ -491,7 +489,6 @@
             if (rows.length < 2 || rows[0] === '') {
                 resultContent.innerHTML = `<h3 class="font-semibold text-lg mb-2">処理ログ</h3><ul class="list-disc list-inside space-y-1 mb-6">${logHtml}</ul><h3 class="font-semibold text-lg mb-2">結果プレビュー (0行)</h3><p class="text-slate-500">処理の結果、該当するデータがありませんでした。</p>`;
                 downloadBtn.classList.add('hidden');
-                aiChatSuggestion.classList.add('hidden');
                 return;
             }
             const headers = rows[0].split(',').map(h => h.trim());
@@ -499,7 +496,6 @@
             const tableHtml = `<div class="overflow-x-auto"><table class="min-w-full text-sm divide-y divide-slate-200"><thead class="bg-slate-50"><tr>${headers.map(h => `<th class="px-4 py-2 text-left font-semibold text-slate-600">${h}</th>`).join('')}</tr></thead><tbody class="divide-y divide-slate-200">${bodyRows.map(row => {if (row.trim() === '') return ''; return `<tr>${row.split(',').map(cell => `<td class="px-4 py-2 whitespace-nowrap">${cell.trim()}</td>`).join('')}</tr>`}).join('')}</tbody></table></div>${rows.length > 6 ? `<p class="text-xs text-slate-500 mt-2">...他 ${rows.length - 6} 行</p>` : ''}`;
             resultContent.innerHTML = `<h3 class="font-semibold text-lg mb-2">処理ログ</h3><ul class="list-disc list-inside space-y-1 mb-6">${logHtml}</ul><h3 class="font-semibold text-lg mb-2">結果プレビュー (${result.rowCount}行)</h3>${tableHtml}`;
             downloadBtn.classList.remove('hidden');
-            aiChatSuggestion.classList.remove('hidden'); // AIチャットの案内を表示
         }
 
         setupDropZone(latestDropZone, latestFileInput, latestFileNameEl, null, null);

@@ -333,6 +333,7 @@ def save_templates_to_s3():
 
 @app.route('/api/chat', methods=['POST'])
 def chat_with_ai():
+    # (この部分は変更なし)
     if not model: return jsonify({'error': 'AI機能が設定されていないため、チャットは実行できません。'}), 503
     data = request.get_json()
     if not data: return jsonify({'error': 'リクエストデータが不正です。'}), 400
@@ -340,65 +341,23 @@ def chat_with_ai():
     csv_content_string = data.get('csv_content')
     if not user_question: return jsonify({'error': '質問が入力されていません。'}), 400
     if not csv_content_string: return jsonify({'error': '分析対象のCSVデータが見つかりません。'}), 400
-    
     try:
         df = pd.read_csv(io.StringIO(csv_content_string))
-        
-        # データサイズを制限してトークン数を削減
-        max_rows = 1000  # 最大1000行まで
-        max_cols = 20    # 最大20列まで
-        
-        if len(df) > max_rows:
-            df = df.head(max_rows)
-        
-        if len(df.columns) > max_cols:
-            df = df.iloc[:, :max_cols]
-        
-        # データの基本情報を取得
-        total_rows = len(df)
-        total_cols = len(df.columns)
-        column_names = list(df.columns)
-        
-        # サンプルデータ（最初の5行）を取得
-        sample_data = df.head(5).to_string(index=False, max_cols=10, max_colwidth=50)
-        
-        # 統計情報を取得
-        numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
-        stats_info = ""
-        if numeric_columns:
-            stats_info = f"\n数値列の統計情報:\n{df[numeric_columns].describe().to_string()}"
-        
-        prompt = f"""あなたは優秀なデータアナリストです。以下のCSVデータの内容を分析し、ユーザーからの質問に簡潔かつ的確に答えてください。
+        csv_for_prompt = df.to_string(index=False)
+        prompt = f"""あなたは優秀なデータアナリストです。以下のCSVデータの内容を分析し、ユーザーからの質問に簡潔かつ的確に答えてください。表形式での回答が適切と判断した場合は、マークダウン形式のテーブルを使用して回答してください。
 
-# データの基本情報:
-- 総行数: {total_rows}行
-- 総列数: {total_cols}列
-- 列名: {', '.join(column_names)}
-
-# サンプルデータ（最初の5行）:
+# CSVデータ:
 ```text
-{sample_data}
+{csv_for_prompt}
 ```
-
-# 統計情報:
-{stats_info}
 
 # ユーザーからの質問:
 {user_question}
 
 # 回答:
-データサイズが大きいため、サンプルデータと統計情報を基に回答します。表形式での回答が適切と判断した場合は、マークダウン形式のテーブルを使用してください。
 """
-        
-        # トークン数を制限するための設定
-        generation_config = genai.types.GenerationConfig(
-            temperature=0.3,
-            max_output_tokens=2048  # 出力トークン数を制限
-        )
-        
-        response = model.generate_content(prompt, generation_config=generation_config)
+        response = model.generate_content(prompt)
         return jsonify({'reply': response.text})
-        
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': f'AIとの対話中にエラーが発生しました: {str(e)}'}), 500

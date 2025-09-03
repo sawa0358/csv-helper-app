@@ -53,6 +53,7 @@
                                     </button>
                                 </div>
                             </div>
+                            <p class="text-xs text-slate-500 mb-2">※ファイル名をクリックするとダウンロードできます</p>
                              <div id="previous-drop-zone" class="drop-zone rounded-md p-4 text-center cursor-pointer">
                                 <i class="fa-solid fa-file-csv text-3xl text-slate-400"></i>
                                 <p id="previous-file-name" class="mt-2 text-sm text-slate-500">S3から自動読込中...</p>
@@ -271,13 +272,26 @@
             if (fileInput.files.length > 0) {
                 fileNameEl.textContent = fileInput.files[0].name;
                 fileNameEl.classList.remove('text-slate-400');
-                fileNameEl.classList.add('text-blue-600', 'font-semibold');
+                fileNameEl.classList.add('text-blue-600', 'font-semibold', 'cursor-pointer', 'hover:text-blue-800');
+                // ファイル名をクリックでダウンロードできるようにする
+                fileNameEl.onclick = () => {
+                    if (fileInput.files[0]) {
+                        const file = fileInput.files[0];
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(file);
+                        link.download = file.name;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }
+                };
                 if (downloadBtnEl) downloadBtnEl.classList.remove('hidden');
                 if (clearBtnEl) clearBtnEl.classList.remove('hidden');
             } else {
                 fileNameEl.innerHTML = 'ここにドラッグ＆ドロップ<br>またはクリックして選択';
                 fileNameEl.classList.add('text-slate-400');
-                fileNameEl.classList.remove('text-blue-600', 'font-semibold');
+                fileNameEl.classList.remove('text-blue-600', 'font-semibold', 'cursor-pointer', 'hover:text-blue-800');
+                fileNameEl.onclick = null;
                 if (downloadBtnEl) downloadBtnEl.classList.add('hidden');
                 if (clearBtnEl) clearBtnEl.classList.add('hidden');
             }

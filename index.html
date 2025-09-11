@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+ドッカーを<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>インポートCSV作成補助システム V2.0</title>
+    <title>インポートCSV作成補助システム V2.1.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <style>
@@ -23,7 +23,7 @@
     <div class="container mx-auto p-4 md:p-8 max-w-7xl">
         
         <header class="mb-8">
-            <h1 class="text-3xl font-bold text-slate-900">インポートCSV作成補助システム V2.0</h1>
+            <h1 class="text-3xl font-bold text-slate-900">インポートCSV作成補助システム V2.1.0</h1>
             <p class="text-slate-600 mt-2">メインシステムに取り込むCSVファイルを、効率的に整形・分析します。</p>
         </header>
 
@@ -45,6 +45,9 @@
                             <div class="flex justify-between items-center mb-1">
                                 <label for="previous_file" class="block text-sm font-medium text-slate-700">前回の案件ファイル (差分抽出用)</label>
                                 <div class="flex items-center space-x-3">
+                                    <button id="browse-history-btn" class="text-sm text-green-600 hover:text-green-800" title="過去ファイルを閲覧">
+                                        <i class="fa-solid fa-calendar-days fa-lg"></i>
+                                    </button>
                                     <button id="clear-previous-btn" class="hidden text-sm text-gray-500 hover:text-red-600" title="前回ファイルをクリア">
                                         <i class="fa-solid fa-times-circle fa-lg"></i>
                                     </button>
@@ -151,6 +154,48 @@
         </div>
     </div>
 
+    <!-- 過去ファイル閲覧モーダル -->
+    <div id="file-history-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+                <div class="flex justify-between items-center p-6 border-b">
+                    <h3 class="text-xl font-semibold text-gray-900">過去ファイル閲覧</h3>
+                    <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600">
+                        <i class="fa-solid fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div class="p-6">
+                    <div class="mb-4">
+                        <label for="date-picker" class="block text-sm font-medium text-gray-700 mb-2">日付を選択してください</label>
+                        <input type="date" id="date-picker" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div id="file-list-container" class="hidden">
+                        <h4 class="text-lg font-medium text-gray-900 mb-3">選択した日付のファイル一覧</h4>
+                        <div id="file-list" class="space-y-2 max-h-60 overflow-y-auto">
+                            <!-- ファイル一覧がここに表示されます -->
+                        </div>
+                    </div>
+                    <div id="no-files-message" class="hidden text-center py-8 text-gray-500">
+                        <i class="fa-solid fa-file-circle-xmark text-4xl mb-2"></i>
+                        <p>選択した日付にファイルが見つかりませんでした。</p>
+                    </div>
+                    <div id="loading-files" class="hidden text-center py-8">
+                        <i class="fa-solid fa-spinner fa-spin text-2xl text-blue-500 mb-2"></i>
+                        <p class="text-gray-600">ファイル一覧を読み込み中...</p>
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-3 p-6 border-t bg-gray-50">
+                    <button id="cancel-file-selection" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                        キャンセル
+                    </button>
+                    <button id="confirm-file-selection" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        選択したファイルを読み込み
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         const latestFileInput = document.getElementById('latest_file');
@@ -174,10 +219,21 @@
         const aiChatInput = document.getElementById('ai-chat-input');
         const aiChatSendBtn = document.getElementById('ai-chat-send-btn');
         const aiChatSuggestion = document.getElementById('ai-chat-suggestion');
+        const browseHistoryBtn = document.getElementById('browse-history-btn');
+        const fileHistoryModal = document.getElementById('file-history-modal');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const cancelFileSelection = document.getElementById('cancel-file-selection');
+        const datePicker = document.getElementById('date-picker');
+        const fileListContainer = document.getElementById('file-list-container');
+        const fileList = document.getElementById('file-list');
+        const noFilesMessage = document.getElementById('no-files-message');
+        const loadingFiles = document.getElementById('loading-files');
+        const confirmFileSelection = document.getElementById('confirm-file-selection');
         let templates = [];
         let processedCsvData = null;
         let latestFileObject = null;
         let processedCsvContent = null; // 処理済みCSVの内容を保存
+        let selectedFileKey = null; // 選択されたファイルのキー
 
         // ★★★ S3からテンプレートを読み込むように変更 ★★★
         async function loadTemplates() {
@@ -515,6 +571,189 @@
             downloadBtn.classList.remove('hidden');
             aiChatSuggestion.classList.remove('hidden'); // AIチャットの案内を表示
         }
+
+        // ★★★ 過去ファイル閲覧機能の実装 ★★★
+        
+        // モーダルの表示/非表示
+        browseHistoryBtn.addEventListener('click', () => {
+            fileHistoryModal.classList.remove('hidden');
+            // 今日の日付をデフォルトに設定
+            const today = new Date().toISOString().split('T')[0];
+            datePicker.value = today;
+            // 初期状態をリセット
+            resetFileSelection();
+        });
+
+        closeModalBtn.addEventListener('click', () => {
+            fileHistoryModal.classList.add('hidden');
+        });
+
+        cancelFileSelection.addEventListener('click', () => {
+            fileHistoryModal.classList.add('hidden');
+        });
+
+        // モーダル外をクリックで閉じる
+        fileHistoryModal.addEventListener('click', (e) => {
+            if (e.target === fileHistoryModal) {
+                fileHistoryModal.classList.add('hidden');
+            }
+        });
+
+        // 日付選択時の処理
+        datePicker.addEventListener('change', async () => {
+            const selectedDate = datePicker.value;
+            if (!selectedDate) return;
+            
+            await loadFilesByDate(selectedDate);
+        });
+
+        // ファイル選択の確認
+        confirmFileSelection.addEventListener('click', async () => {
+            if (!selectedFileKey) return;
+            
+            try {
+                await loadFileByKey(selectedFileKey);
+                fileHistoryModal.classList.add('hidden');
+            } catch (error) {
+                alert(`ファイルの読み込みに失敗しました: ${error.message}`);
+            }
+        });
+
+        // 指定日付のファイル一覧を取得
+        async function loadFilesByDate(date) {
+            showLoadingState();
+            
+            try {
+                const response = await fetch(`/api/files_by_date?date=${date}`);
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(result.error || 'ファイル一覧の取得に失敗しました');
+                }
+                
+                displayFileList(result.files);
+            } catch (error) {
+                console.error('ファイル一覧の取得エラー:', error);
+                showNoFilesMessage();
+            }
+        }
+
+        // ファイル一覧の表示
+        function displayFileList(files) {
+            hideAllStates();
+            
+            if (files.length === 0) {
+                showNoFilesMessage();
+                return;
+            }
+            
+            fileListContainer.classList.remove('hidden');
+            fileList.innerHTML = '';
+            
+            files.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer';
+                fileItem.dataset.key = file.key;
+                
+                const fileInfo = document.createElement('div');
+                fileInfo.className = 'flex-1';
+                
+                const fileName = document.createElement('div');
+                fileName.className = 'font-medium text-gray-900';
+                fileName.textContent = file.key;
+                
+                const fileDetails = document.createElement('div');
+                fileDetails.className = 'text-sm text-gray-500';
+                const fileSize = (file.size / 1024).toFixed(1);
+                const lastModified = new Date(file.last_modified).toLocaleString('ja-JP');
+                fileDetails.textContent = `${fileSize}KB - ${lastModified}`;
+                
+                fileInfo.appendChild(fileName);
+                fileInfo.appendChild(fileDetails);
+                
+                const radioButton = document.createElement('input');
+                radioButton.type = 'radio';
+                radioButton.name = 'file-selection';
+                radioButton.value = file.key;
+                radioButton.className = 'ml-3';
+                
+                fileItem.appendChild(fileInfo);
+                fileItem.appendChild(radioButton);
+                
+                // ファイル選択時の処理
+                fileItem.addEventListener('click', () => {
+                    radioButton.checked = true;
+                    selectedFileKey = file.key;
+                    confirmFileSelection.disabled = false;
+                    confirmFileSelection.classList.remove('opacity-50', 'cursor-not-allowed');
+                });
+                
+                fileList.appendChild(fileItem);
+            });
+        }
+
+        // 指定キーのファイルを読み込み
+        async function loadFileByKey(fileKey) {
+            try {
+                const response = await fetch(`/api/load_file_by_key?key=${encodeURIComponent(fileKey)}`);
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'ファイルの読み込みに失敗しました');
+                }
+                
+                const blob = await response.blob();
+                const fileName = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || fileKey;
+                const file = new File([blob], fileName, { type: 'text/csv' });
+                
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                previousFileInput.files = dt.files;
+                updateFileName(previousFileInput, previousFileNameEl, downloadPreviousBtn, clearPreviousBtn);
+                
+                // 成功メッセージ
+                const successMessage = document.createElement('div');
+                successMessage.className = 'mt-2 text-sm text-green-600';
+                successMessage.innerHTML = `<i class="fa-solid fa-check-circle mr-1"></i>ファイル「${fileName}」を読み込みました`;
+                previousDropZone.appendChild(successMessage);
+                
+                // 3秒後にメッセージを削除
+                setTimeout(() => {
+                    if (successMessage.parentNode) {
+                        successMessage.parentNode.removeChild(successMessage);
+                    }
+                }, 3000);
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        // UI状態の管理
+        function showLoadingState() {
+            hideAllStates();
+            loadingFiles.classList.remove('hidden');
+        }
+
+        function showNoFilesMessage() {
+            hideAllStates();
+            noFilesMessage.classList.remove('hidden');
+        }
+
+        function hideAllStates() {
+            fileListContainer.classList.add('hidden');
+            noFilesMessage.classList.add('hidden');
+            loadingFiles.classList.add('hidden');
+        }
+
+        function resetFileSelection() {
+            selectedFileKey = null;
+            confirmFileSelection.disabled = true;
+            confirmFileSelection.classList.add('opacity-50', 'cursor-not-allowed');
+            hideAllStates();
+        }
+
+        // ★★★ 過去ファイル閲覧機能の実装終了 ★★★
 
         setupDropZone(latestDropZone, latestFileInput, latestFileNameEl, null, null);
         setupDropZone(previousDropZone, previousFileInput, previousFileNameEl, downloadPreviousBtn, clearPreviousBtn);

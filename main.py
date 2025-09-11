@@ -331,6 +331,77 @@ def save_templates_to_s3():
 
 # ★★★ ここまでテンプレート用の新しい機能 ★★★
 
+@app.route('/api/files_by_date', methods=['GET'])
+def get_files_by_date():
+    """指定した日付のS3ファイル一覧を取得する"""
+    if not s3_client: 
+        return jsonify({'error': 'S3が設定されていません。'}), 503
+    
+    try:
+        # クエリパラメータから日付を取得
+        target_date = request.args.get('date')
+        if not target_date:
+            return jsonify({'error': '日付パラメータが指定されていません。'}), 400
+        
+        # S3から全ファイルの一覧を取得
+        response = s3_client.list_objects_v2(Bucket=S3_BUCKET_NAME)
+        
+        if 'Contents' not in response:
+            return jsonify({'files': []})
+        
+        # 指定日付のファイルをフィルタリング
+        target_date_obj = pd.to_datetime(target_date).date()
+        matching_files = []
+        
+        for obj in response['Contents']:
+            # ファイル名がCSVでない場合はスキップ
+            if not obj['Key'].endswith('.csv'):
+                continue
+            
+            # 更新日時を取得
+            last_modified = obj['LastModified'].date()
+            
+            # 指定日付と一致するファイルを抽出
+            if last_modified == target_date_obj:
+                matching_files.append({
+                    'key': obj['Key'],
+                    'last_modified': obj['LastModified'].isoformat(),
+                    'size': obj['Size']
+                })
+        
+        # 更新日時の新しい順にソート
+        matching_files.sort(key=lambda x: x['last_modified'], reverse=True)
+        
+        return jsonify({'files': matching_files})
+        
+    except Exception as e:
+        return jsonify({'error': f'ファイル一覧の取得に失敗しました: {str(e)}'}), 500
+
+@app.route('/api/load_file_by_key', methods=['GET'])
+def load_file_by_key():
+    """S3のキーを指定してファイルを取得する"""
+    if not s3_client: 
+        return jsonify({'error': 'S3が設定されていません。'}), 503
+    
+    try:
+        file_key = request.args.get('key')
+        if not file_key:
+            return jsonify({'error': 'ファイルキーが指定されていません。'}), 400
+        
+        s3_object = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=file_key)
+        file_content = s3_object['Body'].read()
+        
+        return Response(
+            file_content, 
+            mimetype='text/csv', 
+            headers={'Content-Disposition': f'attachment;filename={file_key}'}
+        )
+        
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            return jsonify({'error': '指定されたファイルが見つかりませんでした。'}), 404
+        return jsonify({'error': f'ファイルの取得に失敗しました: {e}'}), 500
+
 @app.route('/api/chat', methods=['POST'])
 def chat_with_ai():
     if not model: return jsonify({'error': 'AI機能が設定されていないため、チャットは実行できません。'}), 503

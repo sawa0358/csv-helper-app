@@ -34,7 +34,14 @@
                     <h2 class="text-xl font-semibold mb-4 border-b pb-2 flex items-center"><i class="fa-solid fa-file-arrow-up mr-3 text-blue-500"></i>ファイル選択</h2>
                     <div class="space-y-4">
                         <div>
-                            <label for="latest_file" class="block text-sm font-medium text-slate-700 mb-1">最新の案件ファイル (必須)</label>
+                            <div class="flex justify-between items-center mb-1">
+                                <label for="latest_file" class="block text-sm font-medium text-slate-700">最新の案件ファイル (必須)</label>
+                                <div class="flex items-center space-x-3">
+                                    <button id="clear-latest-btn" class="hidden text-sm text-gray-500 hover:text-red-600" title="最新ファイルをクリア">
+                                        <i class="fa-solid fa-times-circle fa-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
                             <div id="latest-drop-zone" class="drop-zone rounded-md p-4 text-center cursor-pointer">
                                 <i class="fa-solid fa-file-csv text-3xl text-slate-400"></i>
                                 <p id="latest-file-name" class="mt-2 text-sm text-slate-500">ここにドラッグ＆ドロップ<br>またはクリックして選択</p>
@@ -206,6 +213,7 @@
         const previousFileNameEl = document.getElementById('previous-file-name');
         const downloadPreviousBtn = document.getElementById('download-previous-btn');
         const clearPreviousBtn = document.getElementById('clear-previous-btn');
+        const clearLatestBtn = document.getElementById('clear-latest-btn');
         const aiPromptEditor = document.getElementById('ai-prompt-editor');
         const templateSelect = document.getElementById('template-select');
         const saveTemplateBtn = document.getElementById('save-template-btn');
@@ -353,6 +361,18 @@
             }
         }
         
+        clearLatestBtn.addEventListener('click', () => {
+            if (latestFileInput.files.length > 0) {
+                if (confirm('最新ファイルをクリアします。よろしいですか？')) {
+                    latestFileInput.value = '';
+                    const dt = new DataTransfer();
+                    latestFileInput.files = dt.files;
+                    latestFileObject = null; // 最新ファイルオブジェクトもクリア
+                    updateFileName(latestFileInput, latestFileNameEl, null, clearLatestBtn);
+                }
+            }
+        });
+
         clearPreviousBtn.addEventListener('click', () => {
             if (previousFileInput.files.length > 0) {
                 if (confirm('前回ファイルをクリアします。よろしいですか？')) {
@@ -755,7 +775,7 @@
 
         // ★★★ 過去ファイル閲覧機能の実装終了 ★★★
 
-        setupDropZone(latestDropZone, latestFileInput, latestFileNameEl, null, null);
+        setupDropZone(latestDropZone, latestFileInput, latestFileNameEl, null, clearLatestBtn);
         setupDropZone(previousDropZone, previousFileInput, previousFileNameEl, downloadPreviousBtn, clearPreviousBtn);
         loadTemplates(); // ★★★ ページ読み込み時にS3からテンプレートを取得 ★★★
         loadPreviousFileFromS3();

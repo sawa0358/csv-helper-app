@@ -16,5 +16,5 @@ COPY . .
 # コンテナがリクエストを待ち受けるポート番号を指定
 EXPOSE 8080
 
-# タイムアウト時間を180秒に延長
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "180", "main:app"]
+# タイムアウト時間を180秒に延長（Herokuでは環境変数PORTを使用）
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8080} --timeout 180 main:app"]

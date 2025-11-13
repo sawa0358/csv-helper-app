@@ -432,8 +432,65 @@
             }
         }
         
+        // ★★★ ポーリング用の変数 ★★★
+        let pollingInterval = null;
+        let currentJobId = null;
+
+        // ★★★ ポーリング関数 ★★★
+        async function pollJobStatus(jobId) {
+            try {
+                const response = await fetch(`/api/process_status/${jobId}`);
+                const status = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(status.error || 'ステータスの取得に失敗しました。');
+                }
+                
+                if (status.status === 'processing') {
+                    // まだ処理中 - 継続してポーリング
+                    showLoading('CSVファイルを処理中...（バックグラウンドで実行中）');
+                    return false; // 継続
+                } else if (status.status === 'completed') {
+                    // 処理完了
+                    if (pollingInterval) {
+                        clearInterval(pollingInterval);
+                        pollingInterval = null;
+                    }
+                    showResult(status);
+                    processedCsvData = status.csvData;
+                    processedCsvContent = status.csvData;
+                    await saveLatestFileToS3();
+                    return true; // 完了
+                } else if (status.status === 'error') {
+                    // エラー発生
+                    if (pollingInterval) {
+                        clearInterval(pollingInterval);
+                        pollingInterval = null;
+                    }
+                    showError(status.error || '処理中にエラーが発生しました。');
+                    return true; // 完了（エラー）
+                }
+                
+                return false;
+            } catch (error) {
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                }
+                showError(`ステータス確認中にエラーが発生しました: ${error.message}`);
+                return true; // 完了（エラー）
+            }
+        }
+
         processBtn.addEventListener('click', async () => {
             if (!latestFileInput.files[0]) return showError('「最新の案件ファイル」を選択してください。');
+            
+            // 既存のポーリングを停止
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+            
             s3StatusEl.innerHTML = '';
             const formData = new FormData();
             formData.append('ai_prompt', aiPromptEditor.value);
@@ -450,15 +507,33 @@
             formData.append('keyword_column', document.getElementById('keyword_column').value);
             formData.append('keywords', document.getElementById('keywords').value);
             formData.append('search_type', document.querySelector('input[name="search_type"]:checked').value);
-            showLoading('CSVファイルを処理中...');
+            showLoading('CSVファイルの処理を開始しています...');
+            
             try {
+                // 処理を開始してjob_idを取得
                 const response = await fetch('/api/process', { method: 'POST', body: formData });
                 const result = await response.json();
-                if (!response.ok) throw new Error(result.error || '不明なエラーが発生しました。');
-                showResult(result);
-                processedCsvData = result.csvData;
-                processedCsvContent = result.csvData; // 処理済みCSVの内容を保存
-                await saveLatestFileToS3();
+                
+                if (!response.ok) {
+                    throw new Error(result.error || '処理の開始に失敗しました。');
+                }
+                
+                // job_idを保存
+                currentJobId = result.job_id;
+                
+                // 即座に最初のステータス確認
+                const isComplete = await pollJobStatus(currentJobId);
+                
+                // まだ処理中の場合は、ポーリングを開始（2秒ごと）
+                if (!isComplete) {
+                    pollingInterval = setInterval(async () => {
+                        const isDone = await pollJobStatus(currentJobId);
+                        if (isDone && pollingInterval) {
+                            clearInterval(pollingInterval);
+                            pollingInterval = null;
+                        }
+                    }, 2000); // 2秒ごとにポーリング
+                }
             } catch (error) {
                 showError(error.message);
             }

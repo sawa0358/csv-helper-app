@@ -9,6 +9,9 @@ from flask import Flask, request, jsonify, render_template_string, Response
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 import traceback
+import threading
+import uuid
+from datetime import datetime
 
 # .envファイルから環境変数を読み込む
 load_dotenv()
@@ -49,6 +52,10 @@ if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY and S3_BUCKET_NAME:
 else:
     print("警告: S3接続情報が不足しているため、S3連携機能は無効になります。")
 
+# ★★★ 非同期処理用のジョブ管理 ★★★
+jobs = {}  # {job_id: {'status': 'processing'|'completed'|'error', 'result': {...}, 'error': '...'}}
+jobs_lock = threading.Lock()
+
 def read_csv_from_stream(file_stream):
     encodings_to_try = ['utf-8-sig', 'utf-8', 'shift-jis', 'cp932']
     for encoding in encodings_to_try:
@@ -68,23 +75,25 @@ def index():
     except FileNotFoundError:
         return "index.htmlが見つかりません。先にファイルを作成してください。", 404
 
-@app.route('/api/process', methods=['POST'])
-def process_csv():
-    # (この関数の中身は変更ありません)
+# ★★★ バックグラウンドで実行する処理関数 ★★★
+def process_csv_background(job_id, latest_file_data, latest_filename, previous_file_data, form_data):
+    """バックグラウンドでCSV処理を実行する関数"""
     try:
-        latest_file = request.files.get('latest_file')
-        if not latest_file:
-            return jsonify({'error': '「最新の案件ファイル」がアップロードされていません。'}), 400
+        with jobs_lock:
+            jobs[job_id] = {'status': 'processing', 'result': None, 'error': None, 'started_at': datetime.now().isoformat()}
         
-        df_latest = read_csv_from_stream(latest_file.stream)
+        # ファイルデータをストリームに変換
+        latest_file_stream = io.BytesIO(latest_file_data)
+        df_latest = read_csv_from_stream(latest_file_stream)
         original_row_count = len(df_latest)
-        processing_log = [f"最新ファイル「{secure_filename(latest_file.filename)}」を読み込みました。({original_row_count}行)"]
+        processing_log = [f"最新ファイル「{secure_filename(latest_filename)}」を読み込みました。({original_row_count}行)"]
 
-        previous_file = request.files.get('previous_file')
-        if previous_file:
+        previous_file_stream = None
+        if previous_file_data:
             try:
                 rows_before_diff = len(df_latest)
-                df_previous = read_csv_from_stream(previous_file.stream)
+                previous_file_stream = io.BytesIO(previous_file_data)
+                df_previous = read_csv_from_stream(previous_file_stream)
                 common_columns = list(set(df_latest.columns) & set(df_previous.columns))
                 if not common_columns:
                     raise ValueError("差分比較のため、2つのファイル間で共通の列が1つも見つかりませんでした。")
@@ -95,7 +104,14 @@ def process_csv():
             except Exception as e:
                 error_message = f"差分抽出中にエラーが発生したため、以降の処理を中断しました。エラー: {e}"
                 processing_log.append(f"【重要】{error_message}")
-                return jsonify({'message': '処理が中断されました。','log': processing_log,'rowCount': 0,'csvData': ''})
+                with jobs_lock:
+                    jobs[job_id] = {
+                        'status': 'completed',
+                        'result': {'message': '処理が中断されました。', 'log': processing_log, 'rowCount': 0, 'csvData': ''},
+                        'error': None,
+                        'completed_at': datetime.now().isoformat()
+                    }
+                return
 
         if not df_latest.empty:
             def apply_date_filter(df, col_name, date_val, log_list, filter_num):
@@ -108,12 +124,12 @@ def process_csv():
                         log_list.append(f"日付フィルタ{filter_num}: 「{col_name}」で {rows_before}行 -> {len(df)}行")
                 return df
 
-            df_latest = apply_date_filter(df_latest, request.form.get('filter_date_column_1'), request.form.get('filter_date_value_1'), processing_log, "①")
-            df_latest = apply_date_filter(df_latest, request.form.get('filter_date_column_2'), request.form.get('filter_date_value_2'), processing_log, "②")
+            df_latest = apply_date_filter(df_latest, form_data.get('filter_date_column_1'), form_data.get('filter_date_value_1'), processing_log, "①")
+            df_latest = apply_date_filter(df_latest, form_data.get('filter_date_column_2'), form_data.get('filter_date_value_2'), processing_log, "②")
 
-            keyword_column = request.form.get('keyword_column')
-            keywords_str = request.form.get('keywords')
-            search_type = request.form.get('search_type')
+            keyword_column = form_data.get('keyword_column')
+            keywords_str = form_data.get('keywords')
+            search_type = form_data.get('search_type')
             if keyword_column and keywords_str and keyword_column in df_latest.columns:
                 keywords = [kw.strip() for kw in keywords_str.splitlines() if kw.strip()]
                 if keywords:
@@ -122,29 +138,23 @@ def process_csv():
                     df_latest = df_latest[condition]
                     processing_log.append(f"キーワード検索: {rows_before}行 -> {len(df_latest)}行")
 
-            ai_date_format_enabled = request.form.get('ai_date_format_enabled') == 'on'
-            ai_date_format_column = request.form.get('ai_date_format_column')
+            ai_date_format_enabled = form_data.get('ai_date_format_enabled') == 'on'
+            ai_date_format_column = form_data.get('ai_date_format_column')
             if ai_date_format_enabled and ai_date_format_column and model and ai_date_format_column in df_latest.columns:
                 processing_log.append(f"AIによる日付自動整形を開始 (対象列: {ai_date_format_column})")
                 
-                # 元のデータを最終結果用の変数として用意します
                 final_dates = df_latest[ai_date_format_column].fillna('').astype(str)
-                # その中から、空白ではない、本当に処理が必要なデータだけを抜き出します
                 non_empty_dates = final_dates[final_dates != '']
                 
                 if not non_empty_dates.empty:
                     batch_size = 100
                     has_error = False
-                    
-                    # 整形済みのデータを、元の場所に戻すための準備をします
                     formatted_dates_series = non_empty_dates.copy()
 
-                    # 空白でないデータを、100件ずつの「かたまり」にして処理します
                     for i in range(0, len(non_empty_dates), batch_size):
                         batch_series = non_empty_dates.iloc[i:i+batch_size]
                         
                         try:
-                            # 同じ日付が複数ある場合もAIが正しく処理できるよう、重複を除いたリストを作成します
                             unique_batch_list = batch_series.unique().tolist()
 
                             date_formatting_prompt = f"""
@@ -170,7 +180,6 @@ def process_csv():
                             response = model.generate_content(date_formatting_prompt, request_options={'timeout': 180})
                             cleaned_response_text = response.text.strip()
                             
-                            # AIが返す可能性のある余計な文字を取り除き、純粋なJSONだけを抽出します
                             start_index = cleaned_response_text.find('{')
                             end_index = cleaned_response_text.rfind('}')
                             
@@ -179,7 +188,6 @@ def process_csv():
                                 formatted_map = json.loads(json_string)
 
                                 if isinstance(formatted_map, dict):
-                                    # AIからの辞書回答を元に、元のデータに対応する整形結果を当てはめます
                                     batch_series_updated = batch_series.map(formatted_map).fillna(batch_series)
                                     formatted_dates_series.update(batch_series_updated)
                                 else:
@@ -191,7 +199,6 @@ def process_csv():
                             has_error = True
                             processing_log.append(f"警告: 日付整形のバッチ処理でエラー発生。このバッチはスキップされます。エラー: {str(e)}")
                     
-                    # 整形が成功したデータで、元のデータを更新します
                     final_dates.update(formatted_dates_series)
                     df_latest[ai_date_format_column] = final_dates
 
@@ -202,7 +209,7 @@ def process_csv():
                 else:
                     processing_log.append("AIによる日付自動整形: 対象列に整形すべきデータがありませんでした。")
 
-        ai_processing_prompt = request.form.get('ai_prompt')
+        ai_processing_prompt = form_data.get('ai_prompt')
         final_df = df_latest.copy()
         if ai_processing_prompt and model and not final_df.empty:
             processing_log.append("ユーザー指示のAIプロンプト処理を開始します...")
@@ -245,16 +252,97 @@ def process_csv():
             except Exception as e:
                 processing_log.append(f"警告: AIプロンプト処理中にエラーが発生しました。AI処理前のデータを結果とします。エラー: {e}")
         
-        return jsonify({
+        result = {
             'message': '処理が正常に完了しました。',
             'log': processing_log,
             'rowCount': len(final_df),
             'csvData': final_df.to_csv(index=False, encoding='utf-8-sig')
-        })
-
+        }
+        
+        with jobs_lock:
+            jobs[job_id] = {
+                'status': 'completed',
+                'result': result,
+                'error': None,
+                'completed_at': datetime.now().isoformat()
+            }
+            
     except Exception as e:
         traceback.print_exc()
-        return jsonify({'error': f'サーバーで予期せぬエラーが発生しました: {str(e)}'}), 500
+        with jobs_lock:
+            jobs[job_id] = {
+                'status': 'error',
+                'result': None,
+                'error': f'サーバーで予期せぬエラーが発生しました: {str(e)}',
+                'completed_at': datetime.now().isoformat()
+            }
+
+@app.route('/api/process', methods=['POST'])
+def process_csv():
+    """処理を開始し、即座にjob_idを返す"""
+    try:
+        latest_file = request.files.get('latest_file')
+        if not latest_file:
+            return jsonify({'error': '「最新の案件ファイル」がアップロードされていません。'}), 400
+        
+        # ファイルデータをメモリに読み込む
+        latest_file_data = latest_file.read()
+        latest_filename = latest_file.filename
+        
+        # 前回ファイルのデータを読み込む（存在する場合）
+        previous_file_data = None
+        previous_file = request.files.get('previous_file')
+        if previous_file:
+            previous_file_data = previous_file.read()
+        
+        # フォームデータを取得
+        form_data = {
+            'filter_date_column_1': request.form.get('filter_date_column_1'),
+            'filter_date_value_1': request.form.get('filter_date_value_1'),
+            'filter_date_column_2': request.form.get('filter_date_column_2'),
+            'filter_date_value_2': request.form.get('filter_date_value_2'),
+            'ai_date_format_enabled': request.form.get('ai_date_format_enabled'),
+            'ai_date_format_column': request.form.get('ai_date_format_column'),
+            'keyword_column': request.form.get('keyword_column'),
+            'keywords': request.form.get('keywords'),
+            'search_type': request.form.get('search_type'),
+            'ai_prompt': request.form.get('ai_prompt')
+        }
+        
+        # ジョブIDを生成
+        job_id = str(uuid.uuid4())
+        
+        # バックグラウンドで処理を開始
+        thread = threading.Thread(
+            target=process_csv_background,
+            args=(job_id, latest_file_data, latest_filename, previous_file_data, form_data)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({'job_id': job_id, 'status': 'processing'})
+        
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': f'処理の開始に失敗しました: {str(e)}'}), 500
+
+@app.route('/api/process_status/<job_id>', methods=['GET'])
+def get_process_status(job_id):
+    """処理の状態を取得"""
+    with jobs_lock:
+        job = jobs.get(job_id)
+    
+    if not job:
+        return jsonify({'error': 'ジョブが見つかりません。'}), 404
+    
+    if job['status'] == 'processing':
+        return jsonify({'status': 'processing', 'job_id': job_id})
+    elif job['status'] == 'completed':
+        return jsonify({'status': 'completed', 'job_id': job_id, **job['result']})
+    elif job['status'] == 'error':
+        return jsonify({'status': 'error', 'job_id': job_id, 'error': job['error']}), 500
+    
+    return jsonify({'status': 'unknown', 'job_id': job_id})
 
 @app.route('/api/save_latest_file', methods=['POST'])
 def save_latest_file_to_s3():

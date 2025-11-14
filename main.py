@@ -31,6 +31,7 @@ S3_TEMPLATES_KEY = "prompt_templates.json" # ★★★ テンプレート保存�
 model = None
 try:
     if GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel('gemini-2.5-flash-lite') # 最新の軽量モデルに変更
         print("Geminiモデルが正常に初期化されました。")
     else:
@@ -185,7 +186,21 @@ def process_csv_background(job_id, latest_file_data, latest_filename, previous_f
                             
                             if start_index != -1 and end_index != -1:
                                 json_string = cleaned_response_text[start_index:end_index+1]
-                                formatted_map = json.loads(json_string)
+                                
+                                # JSONパース前に検証
+                                try:
+                                    formatted_map = json.loads(json_string)
+                                except json.JSONDecodeError as json_err:
+                                    # JSON解析エラーの詳細情報をログに出力
+                                    error_pos = getattr(json_err, 'pos', None)
+                                    error_msg = f"JSON解析エラー: {str(json_err)}"
+                                    if error_pos:
+                                        error_msg += f" (位置: {error_pos}文字目)"
+                                        error_msg += f"\nエラー位置付近の文字列: {json_string[max(0, error_pos-100):error_pos+100]}"
+                                    error_msg += f"\nAIの生応答（最初の500文字）: {cleaned_response_text[:500]}"
+                                    error_msg += f"\n抽出したJSON文字列（最初の500文字）: {json_string[:500]}"
+                                    error_msg += f"\n抽出したJSON文字列（最後の500文字）: {json_string[-500:]}"
+                                    raise ValueError(error_msg)
 
                                 if isinstance(formatted_map, dict):
                                     batch_series_updated = batch_series.map(formatted_map).fillna(batch_series)
@@ -193,11 +208,15 @@ def process_csv_background(job_id, latest_file_data, latest_filename, previous_f
                                 else:
                                     raise ValueError("AIの応答がJSONオブジェクト（辞書）ではありません。")
                             else:
-                                raise ValueError("AIの応答にJSONオブジェクト（辞書）が含まれていません。")
+                                raise ValueError(f"AIの応答にJSONオブジェクト（辞書）が含まれていません。開始位置: {start_index}, 終了位置: {end_index}\nAIの生応答（最初の500文字）: {cleaned_response_text[:500]}")
 
                         except Exception as e:
                             has_error = True
-                            processing_log.append(f"警告: 日付整形のバッチ処理でエラー発生。このバッチはスキップされます。エラー: {str(e)}")
+                            error_detail = str(e)
+                            # エラーメッセージが長い場合は切り詰める
+                            if len(error_detail) > 1000:
+                                error_detail = error_detail[:1000] + "... (以下省略)"
+                            processing_log.append(f"警告: 日付整形のバッチ処理でエラー発生。このバッチはスキップされます。エラー: {error_detail}")
                     
                     final_dates.update(formatted_dates_series)
                     df_latest[ai_date_format_column] = final_dates
@@ -243,14 +262,74 @@ def process_csv_background(job_id, latest_file_data, latest_filename, previous_f
                 generation_config = genai.types.GenerationConfig(temperature=0)
                 safety_settings = {'HARM_CATEGORY_HARASSMENT': 'BLOCK_NONE','HARM_CATEGORY_HATE_SPEECH': 'BLOCK_NONE','HARM_CATEGORY_SEXUALLY_EXPLICIT': 'BLOCK_NONE','HARM_CATEGORY_DANGEROUS_CONTENT': 'BLOCK_NONE',}
                 response = model.generate_content(final_prompt, generation_config=generation_config, safety_settings=safety_settings, request_options={'timeout': 180})
-                cleaned_response_text = response.text.strip().replace("`", "").replace("json", "")
-                matched_indices = json.loads(cleaned_response_text)
+                
+                # AIの応答からJSON配列を抽出（より堅牢な処理）
+                raw_response = response.text.strip()
+                processing_log.append(f"AIの生応答（最初の200文字）: {raw_response[:200]}")
+                
+                # マークダウンコードブロックを除去（複数のパターンに対応）
+                cleaned_response = raw_response
+                # ```json と ``` を除去
+                cleaned_response = cleaned_response.replace("```json", "").replace("```", "").strip()
+                
+                # JSON配列の開始位置と終了位置を探す（最初の[と最後の]）
+                start_index = cleaned_response.find('[')
+                end_index = cleaned_response.rfind(']')
+                
+                processing_log.append(f"cleaned_responseの長さ: {len(cleaned_response)}文字")
+                processing_log.append(f"start_index: {start_index}, end_index: {end_index}")
+                
+                if start_index != -1 and end_index != -1 and end_index > start_index:
+                    json_string = cleaned_response[start_index:end_index+1]
+                    processing_log.append(f"抽出したJSON文字列の長さ: {len(json_string)}文字")
+                    processing_log.append(f"抽出したJSON文字列（最初の200文字）: {json_string[:200]}")
+                    processing_log.append(f"抽出したJSON文字列（最後の200文字）: {json_string[-200:]}")
+                    
+                    # 非常に長いJSON配列の場合でも解析できるようにする
+                    try:
+                        matched_indices = json.loads(json_string)
+                    except json.JSONDecodeError as json_err:
+                        # JSON解析エラーが発生した場合、エラーの位置を確認
+                        error_pos = getattr(json_err, 'pos', None)
+                        error_msg = f"JSON解析エラー: {str(json_err)}"
+                        if error_pos:
+                            error_msg += f" (位置: {error_pos}文字目)"
+                            error_msg += f"\nエラー位置付近の文字列: {json_string[max(0, error_pos-100):error_pos+100]}"
+                        error_msg += f"\n抽出したJSON文字列（最初の500文字）: {json_string[:500]}"
+                        error_msg += f"\n抽出したJSON文字列（最後の500文字）: {json_string[-500:]}"
+                        processing_log.append(error_msg)
+                        raise
+                else:
+                    # JSON配列が見つからない場合、全体をパースしてみる
+                    processing_log.append("警告: JSON配列の開始/終了が見つかりません。全体をパースします。")
+                    processing_log.append(f"cleaned_response（最初の500文字）: {cleaned_response[:500]}")
+                    try:
+                        matched_indices = json.loads(cleaned_response)
+                    except json.JSONDecodeError as json_err:
+                        # 全体パースでもエラーが発生した場合の詳細ログ
+                        error_pos = getattr(json_err, 'pos', None)
+                        error_msg = f"全体パース時のJSON解析エラー: {str(json_err)}"
+                        if error_pos:
+                            error_msg += f" (位置: {error_pos}文字目)"
+                            error_msg += f"\nエラー位置付近の文字列: {cleaned_response[max(0, error_pos-100):error_pos+100]}"
+                        error_msg += f"\ncleaned_response（最後の500文字）: {cleaned_response[-500:]}"
+                        processing_log.append(error_msg)
+                        raise
+                
                 if isinstance(matched_indices, list):
                     valid_indices = [idx for idx in matched_indices if idx in final_df.index]
                     final_df = final_df.loc[valid_indices]
                     processing_log.append(f"ユーザー指示のAIプロンプト処理が完了しました。{len(valid_indices)}件の行が合致しました。")
+                else:
+                    raise ValueError(f"AIの応答が配列ではありません: {type(matched_indices)}")
+            except json.JSONDecodeError as e:
+                processing_log.append(f"警告: AIプロンプト処理中にJSON解析エラーが発生しました。AI処理前のデータを結果とします。")
+                processing_log.append(f"エラー詳細: {str(e)}")
+                processing_log.append(f"AIの応答（最初の500文字）: {raw_response[:500] if 'raw_response' in locals() else '応答なし'}")
             except Exception as e:
                 processing_log.append(f"警告: AIプロンプト処理中にエラーが発生しました。AI処理前のデータを結果とします。エラー: {e}")
+                if 'raw_response' in locals():
+                    processing_log.append(f"AIの応答（最初の500文字）: {raw_response[:500]}")
         
         result = {
             'message': '処理が正常に完了しました。',
